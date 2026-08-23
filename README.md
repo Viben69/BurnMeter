@@ -20,61 +20,54 @@ telemetry, and the server binds to `127.0.0.1` only.
 
 ## Install
 
-**Windows, one line.** Paste into PowerShell (no admin needed):
+**Windows, one line.** Paste into PowerShell — no admin rights needed:
 
 ```powershell
-$env:BURNMETER_TOKEN='github_pat_...'; irm https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.ps1 | iex
 ```
 
 **macOS / Linux:**
 
 ```bash
-BURNMETER_TOKEN=github_pat_... sh -c "$(curl -fsSL https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.sh)"
+curl -fsSL https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.sh | sh
 ```
 
-That checks for Node 18+, downloads the current release, installs it, wires up
-the statusline, and (on Windows) puts two shortcuts on your desktop.
+That checks for Node 18+, downloads the current release, installs it to
+`~/.claude/burnmeter`, wires up the statusline, and — on Windows — puts two
+shortcuts on your desktop and sets it to start at login.
 
-<details>
-<summary>Where the token comes from</summary>
-
-**If you already use GitHub Desktop, the `gh` CLI, or have ever pushed to GitHub
-over HTTPS on this machine, you can skip the token entirely** — the updater asks
-git's credential helper, finds the one the OS already stores, and uses that. No
-token file, no plaintext credential on disk, nothing to set up. `node update.js
---check` will tell you: it prints which source it used.
-
-You only need to make a token for the *install* step on a machine that has never
-talked to GitHub, or for headless boxes.
-
-The repo is private, so installing and updating needs a GitHub token that can
-read it. Make one at **github.com → Settings → Developer settings → Personal
-access tokens → Fine-grained tokens**:
-
-* **Repository access** → only the `burnmeter` repo
-* **Permissions** → Repository permissions → **Contents: Read-only**
-
-Nothing else. That token can read this one repo and do nothing else with the
-account.
-
-It gets saved to `~/.claude/burnmeter/.token` (never to `config.json`, so a
-config you copy between machines can't carry a credential). To set or replace
-it later:
-
-```bash
-node ~/.claude/burnmeter/update.js --set-token
-```
-
-</details>
-
-**From a clone**, if you'd rather:
+**From a clone**, if you'd rather read it first:
 
 ```bash
 git clone https://github.com/Viben69/BurnMeter.git
-cd burnmeter
+cd BurnMeter
 node install.js
 node install-desktop.js
 ```
+
+<details>
+<summary>Running a private fork</summary>
+
+Everything below is only relevant if you fork this into a **private** repo.
+The public install above needs no credentials at all.
+
+A private repo needs a GitHub token that can read it. The updater looks in three
+places, best first: `$BURNMETER_TOKEN`, a `.token` file next to the app, then
+**git's own credential helper** — so if you use GitHub Desktop or the `gh` CLI,
+there is usually nothing to set up and no plaintext credential on disk.
+
+To install from a private fork:
+
+```powershell
+$env:BURNMETER_REPO='you/your-fork'; $env:BURNMETER_TOKEN='github_pat_...'
+irm https://raw.githubusercontent.com/you/your-fork/main/install.ps1 | iex
+```
+
+Make the token at **Settings → Developer settings → Personal access tokens →
+Fine-grained**, scoped to that one repo with **Contents: Read-only**. To set it
+later: `node ~/.claude/burnmeter/update.js --set-token`.
+
+</details>
 
 `install.js` copies the app to `~/.claude/burnmeter/` and adds a `statusLine`
 entry to `~/.claude/settings.json` (backing the file up first, and refusing to

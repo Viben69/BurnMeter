@@ -7,14 +7,13 @@
   the Claude Code statusline, and puts two shortcuts on your desktop.
 
   Nothing here needs admin rights, and nothing runs as a service.
-  The repo is private, so you need a GitHub token with read access to it.
-  Set it first, then run the installer:
+  No credentials needed - the repo is public.
 
+  Installing from a PRIVATE fork instead? Set both of these first, and the
+  token is saved to ~/.claude/burnmeter/.token so updates keep working:
+
+      $env:BURNMETER_REPO  = 'you/your-fork'
       $env:BURNMETER_TOKEN = 'github_pat_...'
-      irm https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.ps1 | iex
-
-  The token is saved to ~/.claude/burnmeter/.token so updates keep working.
-  Override the source with $env:BURNMETER_REPO = 'you/your-fork' first.
 #>
 
 $ErrorActionPreference = 'Stop'

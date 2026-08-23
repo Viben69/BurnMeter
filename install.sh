@@ -8,12 +8,12 @@
 # There is no desktop-shortcut step on these platforms - see the README for
 # launchd (macOS) and systemd --user (Linux) autostart.
 #
-# The repo is private, so you need a GitHub token with read access:
+# No credentials needed - the repo is public.
 #
-#     BURNMETER_TOKEN=github_pat_... sh -c "$(curl -fsSL .../install.sh)"
+# Installing from a PRIVATE fork instead? Set both of these first, and the
+# token is saved to ~/.claude/burnmeter/.token so updates keep working:
 #
-# The token is saved to ~/.claude/burnmeter/.token so updates keep working.
-# Override the source with BURNMETER_REPO=you/your-fork before running.
+#     BURNMETER_REPO=you/your-fork BURNMETER_TOKEN=github_pat_... sh install.sh
 
 set -eu
 
