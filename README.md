@@ -23,13 +23,13 @@ telemetry, and the server binds to `127.0.0.1` only.
 **Windows, one line.** Paste into PowerShell (no admin needed):
 
 ```powershell
-$env:BURNMETER_TOKEN='github_pat_...'; irm https://raw.githubusercontent.com/OWNER/burnmeter/main/install.ps1 | iex
+$env:BURNMETER_TOKEN='github_pat_...'; irm https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.ps1 | iex
 ```
 
 **macOS / Linux:**
 
 ```bash
-BURNMETER_TOKEN=github_pat_... sh -c "$(curl -fsSL https://raw.githubusercontent.com/OWNER/burnmeter/main/install.sh)"
+BURNMETER_TOKEN=github_pat_... sh -c "$(curl -fsSL https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.sh)"
 ```
 
 That checks for Node 18+, downloads the current release, installs it, wires up
@@ -61,7 +61,7 @@ node ~/.claude/burnmeter/update.js --set-token
 **From a clone**, if you'd rather:
 
 ```bash
-git clone https://github.com/OWNER/burnmeter.git
+git clone https://github.com/Viben69/BurnMeter.git
 cd burnmeter
 node install.js
 node install-desktop.js

@@ -13,6 +13,6 @@
     "manifest": "node make-manifest.js",
     "icon": "node make-icon.js"
   },
-  "repository": { "type": "git", "url": "https://github.com/OWNER/burnmeter" },
+  "repository": { "type": "git", "url": "https://github.com/Viben69/BurnMeter" },
   "dependencies": {}
 }

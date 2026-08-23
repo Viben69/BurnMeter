@@ -2,7 +2,7 @@
 #
 # BurnMeter one-line installer for macOS and Linux.
 #
-#     curl -fsSL https://raw.githubusercontent.com/OWNER/burnmeter/main/install.sh | sh
+#     curl -fsSL https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.sh | sh
 #
 # Installs to ~/.claude/burnmeter and wires up the Claude Code statusline.
 # There is no desktop-shortcut step on these platforms - see the README for
@@ -17,7 +17,7 @@
 
 set -eu
 
-REPO="${BURNMETER_REPO:-OWNER/burnmeter}"
+REPO="${BURNMETER_REPO:-Viben69/BurnMeter}"
 BRANCH="${BURNMETER_BRANCH:-main}"
 TOKEN="${BURNMETER_TOKEN:-}"
 DEST="$HOME/.claude/burnmeter"

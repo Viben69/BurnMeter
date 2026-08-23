@@ -1,7 +1,7 @@
 <#
   BurnMeter one-line installer for Windows.
 
-      irm https://raw.githubusercontent.com/OWNER/burnmeter/main/install.ps1 | iex
+      irm https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.ps1 | iex
 
   Downloads the current release, installs it to ~/.claude/burnmeter, wires up
   the Claude Code statusline, and puts two shortcuts on your desktop.
@@ -11,7 +11,7 @@
   Set it first, then run the installer:
 
       $env:BURNMETER_TOKEN = 'github_pat_...'
-      irm https://raw.githubusercontent.com/OWNER/burnmeter/main/install.ps1 | iex
+      irm https://raw.githubusercontent.com/Viben69/BurnMeter/main/install.ps1 | iex
 
   The token is saved to ~/.claude/burnmeter/.token so updates keep working.
   Override the source with $env:BURNMETER_REPO = 'you/your-fork' first.
@@ -19,7 +19,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$Repo   = if ($env:BURNMETER_REPO)   { $env:BURNMETER_REPO }   else { 'OWNER/burnmeter' }
+$Repo   = if ($env:BURNMETER_REPO)   { $env:BURNMETER_REPO }   else { 'Viben69/BurnMeter' }
 $Branch = if ($env:BURNMETER_BRANCH) { $env:BURNMETER_BRANCH } else { 'main' }
 $Dest   = Join-Path $HOME '.claude\burnmeter'
 
