@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BurnMeter</title>
+<link rel="icon" href="/icon.svg">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" stroke="var(--s2)" stroke-width="2"/>
+        <path d="M12 12 L17.5 7.5" stroke="var(--ink)" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="12" cy="12" r="1.9" fill="var(--ink)"/>
+      </svg>
+      BurnMeter
+    </div>
+
+    <span class="live"><span class="dot" id="dot"></span><span id="livetext">connecting</span></span>
+
+    <div class="spacer"></div>
+
+    <div class="plan">
+      <input class="name" id="planName" aria-label="Plan name" placeholder="Plan">
+      <span style="color:var(--muted)">$</span>
+      <input class="money" id="planUsd" type="number" min="0" step="1" aria-label="Monthly plan price">
+      <span style="color:var(--muted);font-size:12px">/mo</span>
+      <button id="planSave" class="icon">Save</button>
+    </div>
+
+    <button class="icon" id="btnMini"  title="Open the floating gauge in its own window">◱ Gauge</button>
+    <button class="icon" id="btnTheme" title="Toggle light / dark">◐</button>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="overview"  aria-selected="true">Overview</button>
+    <button role="tab" data-tab="sessions"  aria-selected="false">Sessions</button>
+    <button role="tab" data-tab="breakdown" aria-selected="false">Breakdown</button>
+    <button role="tab" data-tab="live"      aria-selected="false">Live feed</button>
+  </div>
+
+  <div id="updatebar" class="updatebar hidden"></div>
+  <div id="warn" class="warnbar hidden"></div>
+
+  <!-- ================================================================ OVERVIEW -->
+  <section id="tab-overview">
+    <div class="grid row-hero">
+
+      <div class="card">
+        <h2>Burn rate <span class="tag" id="rateWindow"></span></h2>
+        <div class="gaugewrap">
+          <svg id="gauge" viewBox="0 0 320 196" role="img" aria-label="Current burn rate"></svg>
+          <div class="hero num" id="rateBig">$0.00<small>/hr</small></div>
+          <div class="herolabel" id="rateNote">API-rate value, averaged over the last 5 minutes</div>
+          <div class="chips" id="rateChips"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Money's worth <span class="tag" id="worthTag"></span></h2>
+        <div class="worthhdr">
+          <div>
+            <div class="bignum num" id="worthSpent">$0.00</div>
+            <div class="sub2" id="worthSub">of API value this month</div>
+          </div>
+          <div style="text-align:right">
+            <div class="bignum num" id="worthMult">0.00&times;</div>
+            <div class="sub2">the plan fee</div>
+          </div>
+        </div>
+        <div class="mtrack" style="height:14px;border-radius:7px">
+          <div class="mfill" id="worthFill" style="width:0%;background:var(--s3)"></div>
+          <div class="mmark" id="worthMark" style="left:100%"></div>
+        </div>
+        <div class="verdict" id="worthVerdict"></div>
+        <div class="statline" id="worthStats"></div>
+      </div>
+    </div>
+
+    <div class="grid row-2" style="margin-top:13px">
+      <div class="card">
+        <h2>Subscription limits <span class="tag" id="limitsTag"></span></h2>
+        <div id="limits"></div>
+      </div>
+
+      <div class="card">
+        <h2>Spend windows</h2>
+        <div class="statline" id="windows" style="margin-top:0"></div>
+        <h2 style="margin-top:18px">Last 24 hours</h2>
+        <div class="chartbox"><svg id="spark" viewBox="0 0 620 118" preserveAspectRatio="none"
+             style="width:100%;height:118px"></svg></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:13px">
+      <h2>This month, day by day <span class="tag" id="dailyTag"></span></h2>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--s1)"></i>daily API value</span>
+        <span><i class="swatch" style="background:var(--s2)"></i>today</span>
+        <span><i class="swatch" style="background:var(--baseline);height:2px;width:16px;border-radius:0"></i>break-even pace</span>
+      </div>
+      <div class="chartbox chartscroll"><svg id="daily" viewBox="0 0 940 220"></svg></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ SESSIONS -->
+  <section id="tab-sessions" class="hidden">
+    <div class="toolbar">
+      <input class="search" id="sQuery" type="search" placeholder="Search title, project, model…">
+      <select id="sSpan">
+        <option value="all">All time</option>
+        <option value="d30">Last 30 days</option>
+        <option value="month">This month</option>
+        <option value="week">Last 7 days</option>
+        <option value="today">Today</option>
+      </select>
+      <select id="sSort">
+        <option value="cost">Most expensive</option>
+        <option value="recent">Most recent</option>
+        <option value="rate">Highest $/hour</option>
+        <option value="duration">Longest</option>
+        <option value="requests">Most requests</option>
+        <option value="prompts">Most prompts</option>
+        <option value="oldest">Oldest first</option>
+      </select>
+      <div class="spacer"></div>
+      <span class="pill" id="sSummary"></span>
+    </div>
+    <div class="card">
+      <div class="tablescroll">
+        <table id="sTable">
+          <thead><tr>
+            <th style="width:38%">Session</th>
+            <th>Project</th>
+            <th>When</th>
+            <th class="n">Length</th>
+            <th class="n">Prompts</th>
+            <th class="n">$/hr</th>
+            <th class="n">Delegated</th>
+            <th class="n">API value</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="sEmpty">No sessions match.</div>
+    </div>
+  </section>
+
+  <!-- =============================================================== BREAKDOWN -->
+  <section id="tab-breakdown" class="hidden">
+    <div class="toolbar">
+      <span style="color:var(--muted);font-size:12px">Window</span>
+      <select id="bDays">
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="365">Last year</option>
+      </select>
+      <div class="spacer"></div>
+      <span class="pill" id="bSummary"></span>
+    </div>
+
+    <div class="card">
+      <h2>Daily API value</h2>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--s1)"></i>main thread</span>
+        <span><i class="swatch" style="background:var(--s5)"></i>subagents &amp; workflows</span>
+      </div>
+      <div class="chartbox chartscroll"><svg id="bDaily" viewBox="0 0 940 230"></svg></div>
+    </div>
+
+    <div class="grid row-2" style="margin-top:13px">
+      <div class="card">
+        <h2>By model</h2>
+        <div class="tablescroll"><table id="bModel">
+          <thead><tr><th>Model</th><th class="n">Requests</th><th class="n">Tokens</th><th class="n">Value</th><th style="width:24%"></th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>By project</h2>
+        <div class="tablescroll"><table id="bProject">
+          <thead><tr><th>Project</th><th class="n">Requests</th><th class="n">Tokens</th><th class="n">Value</th><th style="width:24%"></th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:13px">
+      <h2>When you burn <span class="tag">value by hour of day</span></h2>
+      <div class="chartbox chartscroll"><svg id="bHours" viewBox="0 0 940 190"></svg></div>
+    </div>
+  </section>
+
+  <!-- ==================================================================== LIVE -->
+  <section id="tab-live" class="hidden">
+    <div class="card">
+      <h2>Every API response as it lands</h2>
+      <div class="tablescroll">
+        <table class="ticker" id="feed">
+          <thead><tr>
+            <th>Time</th><th>Model</th><th>Project</th><th></th>
+            <th class="n">In</th><th class="n">Out</th><th class="n">Think</th>
+            <th class="n">Cache read</th><th class="n">Cache write</th><th class="n">Value</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="empty" id="feedEmpty">Waiting for the next API response…</div>
+    </div>
+  </section>
+
+  <footer>
+    Every dollar here is <b>API-equivalent value</b> — what this usage would have cost on pay-as-you-go rates.
+    It is not a bill: on a subscription you pay the flat fee and nothing else.<br>
+    <span id="footStats"></span>
+  </footer>
+</div>
+
+<!-- session drawer -->
+<div class="drawer" id="drawer">
+  <div class="panel" id="drawerPanel"></div>
+</div>
+
+<div class="tip" id="tip"></div>
+<script src="/app.js"></script>
+</body>
+</html>

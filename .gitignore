@@ -1,0 +1,12 @@
+# Everything below is per-machine state, never shipped.
+config.json
+limits.json
+worth-cache.json
+statusline-trace.log
+browser-profile/
+.update-staging/
+.backup-*/
+node_modules/
+*.log
+.DS_Store
+Thumbs.db

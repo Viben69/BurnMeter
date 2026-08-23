@@ -1,0 +1,33 @@
+{
+  "version": "1.0.0",
+  "notes": "",
+  "published": "2026-08-23T19:42:08.775Z",
+  "files": {
+    "server.js": "15a8b71f6422640fa1aa2893bc719b816a171a9f59afd0f65e960f8332848169",
+    "statusline.js": "e4b2ae9eee10d3573616ce8cc1f3d0afcbd2052a6911ed9a927ce975b1c1f2d7",
+    "install.js": "a02224b69580d43a461cacc40d595e1a4f8905e38ccf074da83307748ea183f2",
+    "install-desktop.js": "6e338187187e1d597da651a75e147434505ee70c332e2633e09a736894332747",
+    "make-icon.js": "2db0df6b99b8d17f8cf5dcba7aad1cdb2d9a3dc7fa0c5949c116155e9f31e603",
+    "make-manifest.js": "2a7a81bbf2a158f753f668f8fe7cb53bf13b9c00afebb766dc7d229f16f4aabe",
+    "update.js": "05c0378ec19cfee65f29c69d61623322d7564372b13d5566c65b7b3d0e1fb06c",
+    "seed-demo.js": "50d20f4eca372dc91fbdc43d585ec92bc22210b9bad925afd86f05e405de1a65",
+    "pricing.json": "a1c1f01de57a7f9207fa05f253dfa26dc801c35b347463e222e5ea0cb4110950",
+    "package.json": "0d307ced3bc8fe65a025f6cbeb3e0240e53233cabeffc07e13d98ae3c888487a",
+    "README.md": "0e40296c6c515d1313aae30c57d8c668c22caa26479413cbed70b917111037c7",
+    "LICENSE": "2184b88812412804e1cef2848a1d170ff7288b374d354e012bc4ef5f9389f47c",
+    "install.ps1": "2b1f7a0581b82e7657e02ba03a9e949793b210c546c3c4c42d06ce7e8d26ad1c",
+    "install.sh": "16b9757c73d6972def6ecdfcac5ccad73be25ee3c91fae1bf4d6bc0d91c970fa",
+    "public/app.js": "0d0aa608df0e49607c54bae5d70b535a6a77bf20382c0b63c10e561036a8d7fb",
+    "public/icon.png": "5fb9ba83cb57008b97fff3ba910a40e4a993859fd58ac47245fc22a7cc41f94a",
+    "public/icon.svg": "e1b02e53c1cad9b675d4a2a4af1f95d5997dbf8204359ad84a422189e65093ee",
+    "public/index.html": "ee32e8d4ef25ccd367a6d0442ba3e9e1c7ef80e9a2ab0fd26684df6f1e4d3cf9",
+    "public/mini.html": "354c100951f89288c0e181397a1403b4e6fc8baa7815251aaf9ded15a282c41d",
+    "public/style.css": "edc0f792f12b89817ea073d62b98eeaf3becc8b08814f9e932fee6838835315c",
+    "desktop/autostart.vbs": "2df7700d837f2a3ac66ecf952e5bf1f9d0d0492fec20d9c87cb7141270cf30b9",
+    "desktop/burnmeter.ico": "3ea281c506acedd114165e422aee5555f64d00d5f3502559801da57b03778b75",
+    "desktop/burnmeter.vbs": "ce5f87b9d79d4c161d66ea50ddcfc5af58de2cf3afaa3aea2f852c1026a72aec",
+    "desktop/gauge.vbs": "cc6514cd8226a94a2193dc601fc9fd94351a516c543ec052c964d5c284891a7d",
+    "desktop/server-only.vbs": "e9328a54723cb15b50781e61733f03bf8ebd0438a87a5c16f43c6c8707398e92",
+    "desktop/window.ps1": "fd7f0e6392a25c585d15c7ff6676061188acd7f5026c8790ce94d9c6f49f0686"
+  }
+}

@@ -1,0 +1,13 @@
+# Byte-for-byte fidelity, everywhere.
+#
+# update.js verifies each downloaded file against a SHA-256 in version.json.
+# Those hashes are computed from the working tree, and the download comes from
+# raw.githubusercontent.com, which serves the blob exactly as stored. If git
+# rewrote line endings on checkout, a Windows clone would hash CRLF files
+# against LF blobs and every update would fail the integrity check.
+#
+# So: no newline conversion for anything, ever.
+* -text
+
+*.ico binary
+*.png binary
