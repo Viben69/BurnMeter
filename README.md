@@ -20,7 +20,49 @@ telemetry, and the server binds to `127.0.0.1` only.
 
 ## Install
 
+**Windows, one line.** Paste into PowerShell (no admin needed):
+
+```powershell
+$env:BURNMETER_TOKEN='github_pat_...'; irm https://raw.githubusercontent.com/OWNER/burnmeter/main/install.ps1 | iex
+```
+
+**macOS / Linux:**
+
 ```bash
+BURNMETER_TOKEN=github_pat_... sh -c "$(curl -fsSL https://raw.githubusercontent.com/OWNER/burnmeter/main/install.sh)"
+```
+
+That checks for Node 18+, downloads the current release, installs it, wires up
+the statusline, and (on Windows) puts two shortcuts on your desktop.
+
+<details>
+<summary>Where the token comes from</summary>
+
+The repo is private, so installing and updating needs a GitHub token that can
+read it. Make one at **github.com → Settings → Developer settings → Personal
+access tokens → Fine-grained tokens**:
+
+* **Repository access** → only the `burnmeter` repo
+* **Permissions** → Repository permissions → **Contents: Read-only**
+
+Nothing else. That token can read this one repo and do nothing else with the
+account.
+
+It gets saved to `~/.claude/burnmeter/.token` (never to `config.json`, so a
+config you copy between machines can't carry a credential). To set or replace
+it later:
+
+```bash
+node ~/.claude/burnmeter/update.js --set-token
+```
+
+</details>
+
+**From a clone**, if you'd rather:
+
+```bash
+git clone https://github.com/OWNER/burnmeter.git
+cd burnmeter
 node install.js
 node install-desktop.js
 ```
@@ -265,6 +307,47 @@ The server is a plain JSON API on `127.0.0.1:4317` if you want to build on it:
 | `POST /api/config` | plan name, monthly price, gauge preferences |
 | `POST /api/window` | `top`, `untop`, `size`, `corner`, `state` (Windows) |
 | `POST /api/open` | spawn a dashboard or gauge window |
+
+---
+
+## Updates
+
+BurnMeter checks the repo for a newer version 20 seconds after it starts and
+every six hours after that. When there is one, a banner appears at the top of
+the dashboard with the release notes and an **Update & restart** button.
+
+It only ever *checks* on its own. Installing is always a click, or:
+
+```bash
+node ~/.claude/burnmeter/update.js            # check, then install if newer
+node ~/.claude/burnmeter/update.js --check    # look, change nothing
+node ~/.claude/burnmeter/update.js --rollback # undo the last update
+```
+
+Being offline, or having no token, just means no news — it fails quietly and
+carries on.
+
+**What an update will not do.** It fetches only over HTTPS, only from the one
+repo pinned in `package.json`, and only from GitHub hosts. Every file is checked
+against a SHA-256 from `version.json` and every `.js` file has to parse before
+anything is installed. It never touches `config.json`, `limits.json`, your
+calibration, or your gauge preferences. Whatever it replaces is backed up first,
+and the last three backups are kept.
+
+### Shipping a new version
+
+```bash
+# edit things, then:
+node make-manifest.js --bump patch --notes "what changed"
+git add -A && git commit -m "release v1.0.1" && git push
+```
+
+`make-manifest.js` rewrites `version.json` with the new version number and a
+fresh SHA-256 for every shipped file. Everyone's copy notices within six hours.
+
+`.gitattributes` sets `* -text` so git never rewrites line endings. That matters:
+if a Windows clone checked files out as CRLF, the hashes it generated would not
+match the bytes GitHub serves, and every update would fail its integrity check.
 
 ---
 

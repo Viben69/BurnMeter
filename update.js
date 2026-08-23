@@ -33,16 +33,45 @@ const STAGING = path.join(APP_DIR, '.update-staging');
 
 // Only these hosts, ever. GitHub redirects raw content through the last two.
 const ALLOWED_HOSTS = new Set([
-  'raw.githubusercontent.com',
+  'api.github.com',                 // private repos, via the Contents API
+  'raw.githubusercontent.com',      // public repos
   'github.com',
   'codeload.github.com',
-  'objects.githubusercontent.com'
+  'objects.githubusercontent.com'   // where the API redirects large blobs
 ]);
 
 // Per-machine state. An update must never overwrite these.
 const PRESERVE = new Set([
   'config.json', 'limits.json', 'worth-cache.json', 'statusline-trace.log'
 ]);
+
+// ----------------------------------------------------------------- token ----
+
+/*
+ * A private repo needs a GitHub token. It lives in a file of its own rather
+ * than in config.json, so that a config someone copies between machines - or
+ * pastes into an issue - can never carry a credential with it.
+ *
+ *   ~/.claude/burnmeter/.token      one line, the token, nothing else
+ *   $BURNMETER_TOKEN                wins over the file
+ *
+ * It is only ever sent to api.github.com, and never logged.
+ */
+const TOKEN_F = path.join(APP_DIR, '.token');
+
+function readToken() {
+  const env = (process.env.BURNMETER_TOKEN || '').trim();
+  if (env) return env;
+  try {
+    const t = fs.readFileSync(TOKEN_F, 'utf8').trim();
+    return t || null;
+  } catch { return null; }
+}
+
+function saveToken(token) {
+  fs.writeFileSync(TOKEN_F, String(token).trim() + String.fromCharCode(10), { mode: 0o600 });
+  try { fs.chmodSync(TOKEN_F, 0o600); } catch {}   // no-op on Windows, harmless
+}
 
 // ------------------------------------------------------------------ repo ----
 
@@ -90,7 +119,8 @@ function cmpVersion(a, b) {
 
 // ------------------------------------------------------------------ http ----
 
-function get(url, timeout = 12000, depth = 0) {
+function get(url, opts = {}) {
+  const { timeout = 12000, depth = 0, headers = {}, token = null } = opts;
   return new Promise((resolve, reject) => {
     if (depth > 4) return reject(new Error('too many redirects'));
     let u;
@@ -98,16 +128,26 @@ function get(url, timeout = 12000, depth = 0) {
     if (u.protocol !== 'https:') return reject(new Error('https only'));
     if (!ALLOWED_HOSTS.has(u.host)) return reject(new Error('host not allowed: ' + u.host));
 
-    const req = https.get(u, {
-      headers: { 'user-agent': 'burnmeter-updater', 'accept': '*/*' }
-    }, res => {
+    const h = Object.assign({ 'user-agent': 'burnmeter-updater', 'accept': '*/*' }, headers);
+    // The credential goes to GitHub's API and nowhere else - not to the CDN
+    // hosts it redirects to, which reject it anyway and would only leak it.
+    if (token && u.host === 'api.github.com') h.authorization = 'Bearer ' + token;
+
+    const req = https.get(u, { headers: h }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
-        return resolve(get(new URL(res.headers.location, url).href, timeout, depth + 1));
+        const next = new URL(res.headers.location, url);
+        return resolve(get(next.href, Object.assign({}, opts, {
+          depth: depth + 1,
+          token: next.host === 'api.github.com' ? token : null
+        })));
       }
       if (res.statusCode !== 200) {
         res.resume();
-        return reject(new Error('HTTP ' + res.statusCode));
+        const hint = res.statusCode === 404 ? 'not found (private repo without a valid token?)'
+                   : res.statusCode === 401 || res.statusCode === 403 ? 'access denied (check your token)'
+                   : 'HTTP ' + res.statusCode;
+        return reject(new Error(hint));
       }
       const chunks = [];
       let size = 0;
@@ -126,6 +166,24 @@ function get(url, timeout = 12000, depth = 0) {
 
 const sha256 = buf => crypto.createHash('sha256').update(buf).digest('hex');
 
+/**
+ * Where one file lives. With a token we go through the Contents API, which is
+ * the only route that works for a private repo; without one we use the raw CDN.
+ * Both return identical bytes, so the hashes in version.json hold either way.
+ */
+function fileRequest(repo, name, token) {
+  const rel = String(name).split(path.sep).join('/');
+  const bust = 't=' + Date.now();
+  if (token) {
+    return {
+      url: `https://api.github.com/repos/${repo.owner}/${repo.repo}/contents/${encodeURI(rel)}` +
+           `?ref=${encodeURIComponent(repo.branch)}&${bust}`,
+      opts: { token, headers: { accept: 'application/vnd.github.raw' } }
+    };
+  }
+  return { url: `${repo.raw}/${rel}?${bust}`, opts: {} };
+}
+
 // ----------------------------------------------------------------- check ----
 
 /** Fetch the remote manifest. Resolves to a plain object; never throws. */
@@ -135,8 +193,10 @@ async function check() {
   if (!repo) {
     return { ok: false, current, reason: 'no update repo configured', configured: false };
   }
+  const token = readToken();
   try {
-    const body = await get(`${repo.raw}/version.json?t=${Date.now()}`);
+    const r = fileRequest(repo, 'version.json', token);
+    const body = await get(r.url, r.opts);
     const remote = JSON.parse(body.toString('utf8'));
     if (!remote.version || !remote.files) throw new Error('malformed version.json');
     const available = cmpVersion(remote.version, current) > 0;
@@ -147,6 +207,7 @@ async function check() {
       notes: remote.notes || '',
       published: remote.published || null,
       repo: `${repo.owner}/${repo.repo}`,
+      private: !!token,
       fileCount: Object.keys(remote.files).length,
       checkedAt: Date.now()
     };
@@ -172,9 +233,11 @@ async function apply(opts = {}) {
   if (!repo) return { ok: false, reason: 'no update repo configured' };
 
   const current = localVersion();
+  const token = readToken();
   let remote;
   try {
-    remote = JSON.parse((await get(`${repo.raw}/version.json?t=${Date.now()}`)).toString('utf8'));
+    const r = fileRequest(repo, 'version.json', token);
+    remote = JSON.parse((await get(r.url, r.opts)).toString('utf8'));
   } catch (e) {
     return { ok: false, reason: 'could not reach the repo: ' + e.message };
   }
@@ -207,7 +270,8 @@ async function apply(opts = {}) {
 
     let body;
     try {
-      body = await get(`${repo.raw}/${name.split(path.sep).join('/')}?t=${Date.now()}`);
+      const r = fileRequest(repo, name, token);
+      body = await get(r.url, r.opts);
     } catch (e) {
       rmrf(STAGING);
       return { ok: false, reason: `download failed for ${name}: ${e.message}` };
@@ -307,7 +371,32 @@ function rollback() {
 // ------------------------------------------------------------------ cli ----
 
 async function main() {
-  const args = new Set(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const args = new Set(argv);
+
+  if (args.has('--set-token')) {
+    // Prefer stdin: an argument would end up in shell history.
+    const inline = argv[argv.indexOf('--set-token') + 1];
+    let token = inline && !inline.startsWith('--') ? inline : null;
+    if (token) {
+      console.error('note: passing the token as an argument leaves it in your shell history.');
+    } else {
+      process.stdout.write('Paste your GitHub token (input is not echoed back): ');
+      token = await new Promise(resolve => {
+        let buf = '';
+        process.stdin.setEncoding('utf8');
+        process.stdin.on('data', d => (buf += d));
+        process.stdin.on('end', () => resolve(buf.trim()));
+      });
+    }
+    if (!token) { console.error('No token given.'); process.exit(1); }
+    saveToken(token);
+    console.log(String.fromCharCode(10) + 'Token saved to .token (this directory). Checking access...');
+    const c = await check();
+    if (c.ok) console.log(`OK - ${c.repo}, latest v${c.latest}, you have v${c.current}.`);
+    else console.log(`Still cannot read the repo: ${c.reason}`);
+    process.exit(c.ok ? 0 : 1);
+  }
 
   if (args.has('--rollback')) {
     const r = rollback();
@@ -319,6 +408,11 @@ async function main() {
   if (!c.configured) {
     console.log('No update repo configured yet.');
     console.log('Set "repository" in package.json, or "updateRepo" in config.json, to your GitHub URL.');
+    process.exit(1);
+  }
+  if (!c.ok && /token|denied|not found/i.test(c.reason || '') && !readToken()) {
+    console.log(`Cannot read the repo: ${c.reason}`);
+    console.log('If it is private, add a token:  node update.js --set-token');
     process.exit(1);
   }
   if (!c.ok) {
@@ -348,4 +442,4 @@ async function main() {
 
 if (require.main === module) main().catch(e => { console.error(e.message); process.exit(1); });
 
-module.exports = { check, apply, rollback, repoInfo, localVersion, cmpVersion };
+module.exports = { check, apply, rollback, repoInfo, localVersion, cmpVersion, readToken, saveToken };

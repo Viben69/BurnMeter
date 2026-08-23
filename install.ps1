@@ -7,6 +7,13 @@
   the Claude Code statusline, and puts two shortcuts on your desktop.
 
   Nothing here needs admin rights, and nothing runs as a service.
+  The repo is private, so you need a GitHub token with read access to it.
+  Set it first, then run the installer:
+
+      $env:BURNMETER_TOKEN = 'github_pat_...'
+      irm https://raw.githubusercontent.com/OWNER/burnmeter/main/install.ps1 | iex
+
+  The token is saved to ~/.claude/burnmeter/.token so updates keep working.
   Override the source with $env:BURNMETER_REPO = 'you/your-fork' first.
 #>
 
@@ -46,14 +53,27 @@ $tmp = Join-Path $env:TEMP ("burnmeter-" + [guid]::NewGuid().ToString('N').Subst
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 try {
   $zip = Join-Path $tmp 'src.zip'
-  $url = "https://codeload.github.com/$Repo/zip/refs/heads/$Branch"
   Say "  . downloading $Repo@$Branch"
+  # With a token we go through the API, which is the only route that can read a
+  # private repo. Without one we use the public zip endpoint.
+  if ($Token) {
+    $url = "https://api.github.com/repos/$Repo/zipball/$Branch"
+    $headers = @{ Authorization = "Bearer $Token"; 'User-Agent' = 'burnmeter-installer' }
+  } else {
+    $url = "https://codeload.github.com/$Repo/zip/refs/heads/$Branch"
+    $headers = @{ 'User-Agent' = 'burnmeter-installer' }
+  }
   try {
-    Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+    Invoke-WebRequest -Uri $url -Headers $headers -OutFile $zip -UseBasicParsing
   } catch {
-    Say "  x could not download from $url" Red
+    Say "  x could not download $Repo" Red
     Say "    $($_.Exception.Message)" DarkGray
-    Say '    Check the repo name, or that it is public.' Yellow
+    if (-not $Token) {
+      Say '    If the repo is private, set a token first:' Yellow
+      Say "      `$env:BURNMETER_TOKEN = 'github_pat_...'" DarkGray
+    } else {
+      Say '    Check the token has read access to this repo, and has not expired.' Yellow
+    }
     return
   }
 
@@ -65,6 +85,12 @@ try {
   Say '  . installing'
   & node (Join-Path $src.FullName 'install.js')
   if ($LASTEXITCODE -ne 0) { Say '  x install.js failed' Red; return }
+
+  # Keep the token where the updater looks for it, so updates keep working.
+  if ($Token) {
+    Set-Content -Path (Join-Path $Dest '.token') -Value $Token -NoNewline -Encoding ascii
+    Say '  + update token saved'
+  }
 
   # Desktop shortcuts are generated from the installed copy, not the download,
   # so the launchers point at the right place.

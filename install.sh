@@ -8,12 +8,18 @@
 # There is no desktop-shortcut step on these platforms - see the README for
 # launchd (macOS) and systemd --user (Linux) autostart.
 #
+# The repo is private, so you need a GitHub token with read access:
+#
+#     BURNMETER_TOKEN=github_pat_... sh -c "$(curl -fsSL .../install.sh)"
+#
+# The token is saved to ~/.claude/burnmeter/.token so updates keep working.
 # Override the source with BURNMETER_REPO=you/your-fork before running.
 
 set -eu
 
 REPO="${BURNMETER_REPO:-OWNER/burnmeter}"
 BRANCH="${BURNMETER_BRANCH:-main}"
+TOKEN="${BURNMETER_TOKEN:-}"
 DEST="$HOME/.claude/burnmeter"
 
 printf '\n  BurnMeter\n  what your Claude Code usage is worth\n\n'

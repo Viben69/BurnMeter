@@ -1,5 +1,6 @@
 # Everything below is per-machine state, never shipped.
 config.json
+.token
 limits.json
 worth-cache.json
 statusline-trace.log
