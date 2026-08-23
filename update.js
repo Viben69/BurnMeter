@@ -58,14 +58,53 @@ const PRESERVE = new Set([
  * It is only ever sent to api.github.com, and never logged.
  */
 const TOKEN_F = path.join(APP_DIR, '.token');
+const NL = String.fromCharCode(10);
 
+/*
+ * Three places, best first:
+ *   1. $BURNMETER_TOKEN
+ *   2. .token in this directory
+ *   3. git's own credential helper
+ *
+ * (3) is the nice one: if you use GitHub Desktop, the gh CLI, or have ever
+ * pushed over HTTPS, the OS credential store already holds a usable token and
+ * there is nothing to set up. It also means no plaintext copy on disk.
+ */
 function readToken() {
   const env = (process.env.BURNMETER_TOKEN || '').trim();
   if (env) return env;
   try {
     const t = fs.readFileSync(TOKEN_F, 'utf8').trim();
-    return t || null;
-  } catch { return null; }
+    if (t) return t;
+  } catch {}
+  return gitCredentialToken();
+}
+
+let gitCredCache;
+function gitCredentialToken() {
+  if (gitCredCache !== undefined) return gitCredCache;
+  gitCredCache = null;
+  try {
+    const out = require('child_process').execFileSync(
+      'git', ['credential', 'fill'],
+      { input: 'protocol=https' + NL + 'host=github.com' + NL + NL,
+        encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] });
+    for (const line of out.split(NL)) {
+      const i = line.indexOf('=');
+      if (i > 0 && line.slice(0, i) === 'password') {
+        const v = line.slice(i + 1).trim();
+        if (v) gitCredCache = v;
+      }
+    }
+  } catch { /* no git, no helper, or nothing stored - fine */ }
+  return gitCredCache;
+}
+
+/** Which of the three we ended up using, for display. Never the value. */
+function tokenSource() {
+  if ((process.env.BURNMETER_TOKEN || '').trim()) return 'environment';
+  try { if (fs.readFileSync(TOKEN_F, 'utf8').trim()) return 'token file'; } catch {}
+  return gitCredentialToken() ? 'git credential helper' : null;
 }
 
 function saveToken(token) {
@@ -207,7 +246,7 @@ async function check() {
       notes: remote.notes || '',
       published: remote.published || null,
       repo: `${repo.owner}/${repo.repo}`,
-      private: !!token,
+      auth: tokenSource(),
       fileCount: Object.keys(remote.files).length,
       checkedAt: Date.now()
     };
@@ -442,4 +481,4 @@ async function main() {
 
 if (require.main === module) main().catch(e => { console.error(e.message); process.exit(1); });
 
-module.exports = { check, apply, rollback, repoInfo, localVersion, cmpVersion, readToken, saveToken };
+module.exports = { check, apply, rollback, repoInfo, localVersion, cmpVersion, readToken, saveToken, tokenSource };

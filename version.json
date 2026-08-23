@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
-  "notes": "",
-  "published": "2026-08-23T20:23:24.524Z",
+  "version": "1.0.1",
+  "notes": "Updater can use the OS credential store, so a private repo needs no token setup where git is already signed in.",
+  "published": "2026-08-23T20:24:59.643Z",
   "files": {
     "server.js": "15a8b71f6422640fa1aa2893bc719b816a171a9f59afd0f65e960f8332848169",
     "statusline.js": "e4b2ae9eee10d3573616ce8cc1f3d0afcbd2052a6911ed9a927ce975b1c1f2d7",
@@ -9,10 +9,10 @@
     "install-desktop.js": "6e338187187e1d597da651a75e147434505ee70c332e2633e09a736894332747",
     "make-icon.js": "2db0df6b99b8d17f8cf5dcba7aad1cdb2d9a3dc7fa0c5949c116155e9f31e603",
     "make-manifest.js": "2a7a81bbf2a158f753f668f8fe7cb53bf13b9c00afebb766dc7d229f16f4aabe",
-    "update.js": "24add9a9f8869a86ee093db0c0662d505608f2c44d8c69f54b31c1a18008b5c9",
+    "update.js": "b6efbcc9a47f9afe075c1984711ee065460ba556c7fead6ae9a1405fd114d74d",
     "seed-demo.js": "50d20f4eca372dc91fbdc43d585ec92bc22210b9bad925afd86f05e405de1a65",
     "pricing.json": "a1c1f01de57a7f9207fa05f253dfa26dc801c35b347463e222e5ea0cb4110950",
-    "package.json": "9733d1d185d1f5285b7ef962aaf174078fc47b50bd3b3180af8fbec13538f7bb",
+    "package.json": "f259e3eeaf8943d7ac6d90d2fdaba9784e8d337c0c279940a379697add20e07d",
     "README.md": "596b421d4fbdc579ec3fbd47dc8fbaf7d2da1c490fa34ce86609956edde8aa0e",
     "LICENSE": "2184b88812412804e1cef2848a1d170ff7288b374d354e012bc4ef5f9389f47c",
     "install.ps1": "5a82d1ce30773bb28b43eb117b905a2f9dfbcd04852eb34315a627abd0570be0",

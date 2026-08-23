@@ -1,18 +1,32 @@
 {
   "name": "burnmeter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A desktop money-meter for Claude Code — what your usage would cost at API rates, versus what your subscription costs.",
-  "keywords": ["claude", "claude-code", "usage", "cost", "dashboard", "statusline"],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "usage",
+    "cost",
+    "dashboard",
+    "statusline"
+  ],
   "license": "MIT",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "main": "server.js",
-  "bin": { "burnmeter": "server.js" },
+  "bin": {
+    "burnmeter": "server.js"
+  },
   "scripts": {
     "start": "node server.js --open",
     "install-app": "node install.js && node install-desktop.js",
     "manifest": "node make-manifest.js",
     "icon": "node make-icon.js"
   },
-  "repository": { "type": "git", "url": "https://github.com/Viben69/BurnMeter" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Viben69/BurnMeter"
+  },
   "dependencies": {}
 }
