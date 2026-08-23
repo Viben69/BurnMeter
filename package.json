@@ -1,6 +1,6 @@
 {
   "name": "burnmeter",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A desktop money-meter for Claude Code — what your usage would cost at API rates, versus what your subscription costs.",
   "keywords": [
     "claude",

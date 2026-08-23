@@ -38,6 +38,15 @@ the statusline, and (on Windows) puts two shortcuts on your desktop.
 <details>
 <summary>Where the token comes from</summary>
 
+**If you already use GitHub Desktop, the `gh` CLI, or have ever pushed to GitHub
+over HTTPS on this machine, you can skip the token entirely** — the updater asks
+git's credential helper, finds the one the OS already stores, and uses that. No
+token file, no plaintext credential on disk, nothing to set up. `node update.js
+--check` will tell you: it prints which source it used.
+
+You only need to make a token for the *install* step on a machine that has never
+talked to GitHub, or for headless boxes.
+
 The repo is private, so installing and updating needs a GitHub token that can
 read it. Make one at **github.com → Settings → Developer settings → Personal
 access tokens → Fine-grained tokens**:
@@ -319,10 +328,14 @@ the dashboard with the release notes and an **Update & restart** button.
 It only ever *checks* on its own. Installing is always a click, or:
 
 ```bash
-node ~/.claude/burnmeter/update.js            # check, then install if newer
-node ~/.claude/burnmeter/update.js --check    # look, change nothing
-node ~/.claude/burnmeter/update.js --rollback # undo the last update
+node ~/.claude/burnmeter/update.js             # check, then install if newer
+node ~/.claude/burnmeter/update.js --check     # look, change nothing
+node ~/.claude/burnmeter/update.js --rollback  # undo the last update
+node ~/.claude/burnmeter/update.js --set-token # only if git isn't already signed in
 ```
+
+The updater looks for credentials in three places, best first: `$BURNMETER_TOKEN`,
+a `.token` file next to the app, then git's credential helper.
 
 Being offline, or having no token, just means no news — it fails quietly and
 carries on.
