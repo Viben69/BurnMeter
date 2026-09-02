@@ -6,11 +6,29 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 // ------------------------------------------------------------ formatting ---
 
-const money = (v, dp = 2) => {
-  const n = Number(v) || 0;
-  return '$' + n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
-};
-const moneyC = v => {                       // compact, for tight spaces
+/*
+ * Three lenses on the same number.
+ *
+ * Every figure the server sends is RETAIL: what the usage would cost on
+ * pay-as-you-go API rates. On a flat plan that is a counterfactual, not a bill.
+ * What you actually paid is the fee, and RATE (fee / retail over the last 30
+ * days) turns any retail figure into its real share of that fee.
+ *
+ *   retail   $155.59            the counterfactual
+ *   actual   $9.80              your share of the fee
+ *   deal     $155.59 -> $9.80   both, so the discount is visible
+ *
+ * money() / moneyC() take a retail figure and speak in the current mode.
+ * usd() is for figures that are already real money (the fee itself) and must
+ * never be converted.
+ */
+let MODE = 'retail';
+let RATE = null;
+let modePendingUntil = 0;
+
+const usd = (v, dp = 2) =>
+  '$' + (Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+const usdC = v => {
   const n = Math.abs(Number(v) || 0);
   if (n === 0) return '$0';
   if (n >= 10000) return '$' + (n / 1000).toFixed(1) + 'k';
@@ -18,6 +36,30 @@ const moneyC = v => {                       // compact, for tight spaces
   if (n >= 1)     return '$' + n.toFixed(2);
   return '$' + n.toFixed(n >= 0.01 ? 2 : 3);
 };
+const toActual = v => RATE == null ? null : (Number(v) || 0) * RATE;
+
+function money(v, dp = 2) {
+  const a = toActual(v);
+  if (MODE === 'actual' && a != null) return usd(a, dp);
+  if (MODE === 'deal'   && a != null) return `${usd(v, dp)} \u2192 ${usd(a, dp)}`;
+  return usd(v, dp);
+}
+function moneyC(v) {
+  const a = toActual(v);
+  if (MODE === 'actual' && a != null) return usdC(a);
+  if (MODE === 'deal'   && a != null) return `${usdC(v)}\u2192${usdC(a)}`;
+  return usdC(v);
+}
+/** One value only, for axes and anything that cannot fit a pair. */
+const money1 = v => (MODE === 'retail' || RATE == null) ? usdC(v) : usdC(toActual(v));
+
+/** The words that go with a figure in this mode. */
+const LENS = {
+  retail: { noun: 'at API rates',         col: 'At API rates' },
+  actual: { noun: 'of your fee',          col: 'Your cost' },
+  deal:   { noun: 'retail \u2192 actual', col: 'Retail \u2192 actual' }
+};
+const lens = () => LENS[MODE] || LENS.retail;
 const toks = v => {
   const n = Number(v) || 0;
   if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
@@ -174,12 +216,23 @@ function renderOverview(s) {
   renderInstances(s);
 
   // --- gauge ---
+  // A click on the switch must win over the next second's server frame, or
+  // the lens flickers back until the config write lands.
+  if (Date.now() > modePendingUntil) MODE = s.mode || 'retail';
+  RATE = s.exchange ? s.exchange.rate : null;
+  syncModeSwitch();
+
   drawGauge(s.rate.perHour);
   $('#rateWindow').textContent = `${Math.round(s.rate.windowSec / 60)} min average`;
-  $('#rateBig').innerHTML = `${money(s.rate.perHour)}<small>/hr</small>`;
-  $('#rateNote').textContent = s.rate.perHour > 0.005
-    ? `Keep this up for an hour and you'd pull ${money(s.rate.perHour)} of API-rate value out of the plan.`
-    : 'Idle — nothing has hit the API in the last few minutes.';
+  const r = s.rate.perHour, ra = toActual(r);
+  $('#rateBig').innerHTML = `${MODE === 'retail' || ra == null ? usd(r) : usd(ra)}<small>/hr</small>`;
+  $('#rateNote').textContent = r <= 0.005
+    ? 'Idle \u2014 nothing has hit the API in the last few minutes.'
+    : MODE === 'actual' && ra != null
+      ? `An hour at this pace uses ${usd(ra)} of your ${usd(s.exchange.fee, 0)} \u2014 ${(ra / s.exchange.fee * 100).toFixed(1)}% of the period.`
+    : MODE === 'deal' && ra != null
+      ? `An hour at this pace is ${usd(r)} at API rates, and ${usd(ra)} of your fee.`
+      : `An hour at this pace would cost ${usd(r)} on pay-as-you-go API rates.`;
   $('#rateChips').innerHTML = [
     `<span class="chip">last minute <b>${moneyC(s.rate.instant)}/hr</b></span>`,
     `<span class="chip">last hour <b>${moneyC(s.rate.lastHour)}</b></span>`,
@@ -187,60 +240,37 @@ function renderOverview(s) {
     s.live ? `<span class="chip">this session <b>${moneyC(s.live.cost)}</b></span>` : ''
   ].join('');
 
-  // --- money's worth ---
-  const w = s.worth;
-  $('#worthSpent').textContent = money(w.spent);
-  $('#worthSub').textContent = `of API value this month · plan costs ${money(w.fee, 0)}`;
-  $('#worthMult').innerHTML = w.multiple.toFixed(2) + '&times;';
-  const pct = Math.min(100, (w.spent / w.fee) * 100);
-  const fill = $('#worthFill');
-  fill.style.width = pct + '%';
-  fill.style.background = w.multiple >= 1 ? 'var(--s3)' : w.multiple >= .6 ? 'var(--s4)' : 'var(--s2)';
-  $('#worthMark').style.left = '100%';
-  $('#worthTag').textContent = new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-
-  const overBy = w.spent - w.fee;
-  $('#worthVerdict').innerHTML = w.brokeEven
-    ? `The plan paid for itself <b>${w.breakEvenAt ? new Date(w.breakEvenAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}</b>. Everything since is
-       <b>${money(overBy)}</b> of value you'd otherwise have paid for — you're getting <b>${w.multiple.toFixed(1)}×</b> what you put in.`
-    : `<b>${money(w.fee - w.spent)}</b> more of API-rate value would break even this month.
-       At the current pace you'll land on <b>${money(w.projected)}</b>
-       (${w.projectedMultiple.toFixed(2)}×) by month end —
-       ${w.projectedMultiple >= 1 ? 'comfortably ahead.' : 'short of the fee.'}`;
-
-  $('#worthStats').innerHTML = [
-    stat('Projected', money(w.projected), `${w.projectedMultiple.toFixed(2)}× by month end`),
-    stat('Per day', money(w.perDayActual), `need ${money(w.perDayNeeded)}/day`),
-    stat('Days left', Math.ceil(w.daysLeft), `${Math.round(w.monthFraction * 100)}% through`),
-    stat('All time', money(w.allTimeValue), `${w.allTimeMultiple.toFixed(1)}× over ${w.monthsTracked.toFixed(1)} mo`)
-  ].join('');
+  renderHero(s);
 
   // --- limits ---
-  const L = s.limits;
+  const Lm = s.limits;
   const rows = [];
-  rows.push(limitRow('fiveHour', '5-hour', L.fiveHourPct, L.fiveHourPace, s.windows.blockResetsIn,
-    `${moneyC(s.windows.block.cost)} of value in this block`, L.self && L.self.fiveHour));
-  rows.push(limitRow('week', 'Weekly', L.weekPct, L.weekPace, s.windows.weekResetsIn,
-    `${moneyC(s.windows.week7.cost)} of value in the last 7 days`, L.self && L.self.week));
-  if (L.contextPct != null) {
-    rows.push(meter('Context window', L.contextPct, null, null,
-      L.model ? `current session on ${L.model}` : 'current session'));
+  rows.push(limitRow('fiveHour', '5-hour', Lm.fiveHourPct, Lm.fiveHourPace, s.windows.blockResetsIn,
+    `${moneyC(s.windows.block.cost)} ${lens().noun} in this block`, Lm.self && Lm.self.fiveHour));
+  rows.push(limitRow('week', 'Weekly', Lm.weekPct, Lm.weekPace, s.windows.weekResetsIn,
+    `${moneyC(s.windows.week7.cost)} ${lens().noun} in the last 7 days`, Lm.self && Lm.self.week));
+  if (Lm.contextPct != null) {
+    rows.push(meter('Context window', Lm.contextPct, null, null,
+      Lm.model ? `current session on ${Lm.model}` : 'current session'));
   }
   $('#limits').innerHTML = rows.join('');
 
-  const anyReal = L.fiveHourPct != null;
-  const calibrated = !!(L.calibration && (L.calibration.fiveHourAllowance || L.calibration.weekAllowance));
+  const anyReal = Lm.fiveHourPct != null;
+  const calibrated = !!(Lm.calibration && (Lm.calibration.fiveHourAllowance || Lm.calibration.weekAllowance));
   $('#limitsTag').innerHTML = anyReal
-    ? (L.stale ? '<span style="color:var(--muted)">last seen ' + ago(L.updatedAt * 1000) + '</span>' : 'live')
+    ? (Lm.stale ? '<span style="color:var(--muted)">last seen ' + ago(Lm.updatedAt * 1000) + '</span>' : 'live')
     : calibrated ? '<span style="color:var(--s1)">calibrated estimate</span>'
     : '<span style="color:var(--muted)">estimated from your history</span>';
 
   // --- windows ---
+  const wn = s.windows, resp = w => `${w.requests.toLocaleString()} responses`;
+  $('#windowsTag').textContent = lens().noun;
   $('#windows').innerHTML = [
-    stat('Today', money(s.windows.today.cost), `${s.windows.today.requests.toLocaleString()} responses`),
-    stat('5-hour block', money(s.windows.block.cost), `${s.windows.block.requests.toLocaleString()} responses`),
-    stat('7 days', money(s.windows.week7.cost), `${s.windows.week7.requests.toLocaleString()} responses`),
-    stat('Month', money(s.windows.month.cost), `${s.windows.month.requests.toLocaleString()} responses`)
+    stat('Today', money(wn.today.cost), resp(wn.today)),
+    stat('5-hour block', money(wn.block.cost), resp(wn.block)),
+    stat('7 days', money(wn.week7.cost), resp(wn.week7)),
+    stat('This period', money(wn.month.cost), resp(wn.month)),
+    stat('30 days', money(wn.d30.cost), resp(wn.d30))
   ].join('');
 
   drawSpark(s.spark);
@@ -251,7 +281,7 @@ function renderOverview(s) {
   if (s.unknownModels.length)
     warns.push(`No price on file for <b>${s.unknownModels.map(esc).join(', ')}</b> — counted as $0.
                 Add the rate to <code>pricing.json</code>.`);
-  if (L.fiveHourPct == null && !calibrated)
+  if (Lm.fiveHourPct == null && !calibrated)
     warns.push(`The 5-hour and weekly figures above are <b>estimates from your own history</b>, not
                 Anthropic's allowance. The real percentages are only handed to the statusline hook,
                 which runs in the terminal UI — not the desktop app. If you can see your true
@@ -262,8 +292,18 @@ function renderOverview(s) {
 
   renderUpdate(s);
 
+  $('#footNote').innerHTML = MODE === 'actual'
+    ? `Figures are <b>your share of the ${usd(s.exchange.fee, 0)} fee</b>, allocated by usage: each item's pay-as-you-go
+       cost \u00d7 ${RATE != null ? (RATE * 100).toFixed(1) + '\u00a2' : '?'} per retail dollar, the rate from your last 30 days.`
+    : MODE === 'deal'
+    ? `Each figure is <b>pay-as-you-go API cost \u2192 your share of the fee</b>. The arrow is the discount the plan gives you.`
+    : `Every dollar here is <b>what this usage would cost on pay-as-you-go API rates</b>. It is not a bill \u2014 on a
+       subscription you pay the flat fee and nothing else. Switch to <i>Actual</i> to see your real share of it.`;
+  $('#thValue').textContent = lens().col;
+  $('#feedThValue').textContent = lens().col;
+  $('#dailyLegend').textContent = MODE === 'actual' ? 'daily, your cost' : MODE === 'deal' ? 'daily, retail \u2192 actual' : 'daily, at API rates';
   $('#footStats').innerHTML =
-    `BurnMeter v${esc(s.version || '?')} · tracking <b>${s.eventsTracked.toLocaleString()}</b> API responses across
+    `BurnMeter v${esc(s.version || '?')} \u00b7 tracking <b>${s.eventsTracked.toLocaleString()}</b> API responses across
      <b>${s.sessionsTracked}</b> sessions and <b>${s.filesTracked}</b> transcripts,
      back to ${new Date(s.dataFrom).toLocaleDateString()}. Prices from <code>pricing.json</code>.`;
 }
@@ -335,6 +375,95 @@ function renderInstances(s) {
   $$('#instances .inst').forEach(el => {
     el.onclick = () => openSession(el.dataset.sid);
   });
+}
+
+/*
+ * The hero card answers one question per mode.
+ *   retail  what would this period have cost without the plan?
+ *   actual  what am I paying, and where has it gone?
+ *   deal    how good is the trade?
+ */
+function renderHero(s) {
+  const w = s.worth, x = s.exchange, P = s.period;
+  const fee = x.fee;
+  const day = t => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  $('#worthTag').textContent = `${day(P.start)} \u2013 ${day(P.end - 1)}`;
+  const fill = $('#worthFill'), mark = $('#worthMark');
+  const brokeEvenTxt = w.breakEvenAt ? `paid for itself on <b>${day(w.breakEvenAt)}</b>` : null;
+
+  if (MODE === 'actual') {
+    $('#worthTitle').textContent = 'What you pay';
+    $('#worthSpent').textContent = usd(fee, 0);
+    $('#worthSub').textContent = 'flat, this period \u2014 whatever you use';
+    const alloc = RATE != null ? P.retail * RATE : null;
+    $('#worthMult').textContent = alloc != null ? usd(alloc) : '\u2014';
+    $('#worthSub2').textContent = 'of it used so far, by usage';
+    fill.style.width = Math.min(100, P.fraction * 100) + '%';
+    fill.style.background = 'var(--s1)';
+    mark.style.left = (alloc != null ? Math.min(100, alloc / fee * 100) : 0) + '%';
+    $('#worthVerdict').innerHTML =
+      `The clock has consumed <b>${usd(P.feeElapsed)}</b> of the fee \u2014 ${Math.round(P.fraction * 100)}% of the period.` +
+      (alloc != null
+        ? ` Measured by what you've actually done, this period's usage is worth <b>${usd(alloc)}</b> of the ${usd(fee, 0)}
+           \u2014 that's <b>${usd(P.retail)}</b> of work at API rates, at ${(RATE * 100).toFixed(1)}\u00a2 per retail dollar.`
+        : '');
+    $('#worthStats').innerHTML = [
+      stat('Per day', usd(w.perDayNeeded), `the fee, spread over ${Math.round(P.days)} days`),
+      stat('Per active hour', x.perHourActual != null ? usd(x.perHourActual) : '\u2014', `${x.activeHours30.toFixed(0)}h active in 30 days`),
+      stat('Per prompt', x.perPromptActual != null ? usd(x.perPromptActual) : '\u2014', `${x.prompts30.toLocaleString()} prompts in 30 days`),
+      stat('Per Mtok', x.perMtokActual != null ? usd(x.perMtokActual) : '\u2014', `${toks(x.tokens30)} tokens in 30 days`)
+    ].join('');
+    return;
+  }
+
+  if (MODE === 'deal') {
+    $('#worthTitle').textContent = 'The deal';
+    const disc = x.discount;
+    $('#worthSpent').textContent = disc == null ? '\u2014'
+      : disc >= 0 ? `${(disc * 100).toFixed(0)}% off` : `${((-disc) * 100).toFixed(0)}% over`;
+    $('#worthSub').textContent = 'vs pay-as-you-go, last 30 days';
+    $('#worthMult').innerHTML = x.multiple30 > 0 ? x.multiple30.toFixed(1) + '&times;' : '\u2014';
+    $('#worthSub2').textContent = 'what the fee buys';
+    fill.style.width = (x.retail30 > 0 ? Math.min(100, fee / x.retail30 * 100) : 0) + '%';
+    fill.style.background = disc >= .5 ? 'var(--s3)' : disc >= 0 ? 'var(--s4)' : 'var(--s2)';
+    mark.style.left = '100%';
+    $('#worthVerdict').innerHTML = RATE == null
+      ? 'No usage in the last 30 days to compare against.'
+      : disc >= 0
+        ? `Over the last 30 days you got <b>${usd(x.retail30)}</b> of API-rate work for <b>${usd(fee, 0)}</b> \u2014
+           <b>${(RATE * 100).toFixed(1)}\u00a2</b> per retail dollar. This period ${brokeEvenTxt || 'has not broken even yet'}.`
+        : `Over the last 30 days you used <b>${usd(x.retail30)}</b> of API-rate work and paid <b>${usd(fee, 0)}</b> \u2014
+           the plan is costing you <b>${(1 / RATE).toFixed(1)}\u00d7</b> what pay-as-you-go would.`;
+    const pair = (a, b, dp = 2) => a == null || b == null ? '\u2014' : `${usd(a, dp)} \u2192 ${usd(b, dp)}`;
+    $('#worthStats').innerHTML = [
+      stat('Per active hour', pair(x.perHourRetail, x.perHourActual), 'retail \u2192 what you pay'),
+      stat('Per prompt', pair(x.perPromptRetail, x.perPromptActual), `${x.prompts30.toLocaleString()} prompts`),
+      stat('Per Mtok', pair(x.perMtokRetail, x.perMtokActual), `${toks(x.tokens30)} tokens`),
+      stat('All time', `${usd(w.allTimeValue, 0)} \u2192 ${usd(w.allTimeFees, 0)}`, `${w.allTimeMultiple.toFixed(1)}\u00d7 over ${w.monthsTracked.toFixed(1)} mo`)
+    ].join('');
+    return;
+  }
+
+  // retail
+  $('#worthTitle').textContent = 'Without the plan';
+  $('#worthSpent').textContent = usd(P.retail);
+  $('#worthSub').textContent = 'this period, at pay-as-you-go API rates';
+  $('#worthMult').innerHTML = w.multiple.toFixed(2) + '&times;';
+  $('#worthSub2').textContent = `the ${usd(fee, 0)} fee`;
+  fill.style.width = Math.min(100, (P.retail / fee) * 100) + '%';
+  fill.style.background = w.multiple >= 1 ? 'var(--s3)' : w.multiple >= .6 ? 'var(--s4)' : 'var(--s2)';
+  mark.style.left = '100%';
+  $('#worthVerdict').innerHTML = w.brokeEven
+    ? `This period's usage would already cost <b>${usd(P.retail)}</b> on the API \u2014 the plan ${brokeEvenTxt}.
+       At the 30-day pace it'll reach about <b>${usd(w.projected)}</b> (${w.projectedMultiple.toFixed(1)}\u00d7) by ${day(P.end - 1)}.`
+    : `<b>${usd(fee - P.retail)}</b> more at API rates and the plan breaks even this period.
+       At the 30-day pace it'll reach about <b>${usd(w.projected)}</b> (${w.projectedMultiple.toFixed(1)}\u00d7) by ${day(P.end - 1)}.`;
+  $('#worthStats').innerHTML = [
+    stat('Projected', usd(w.projected), `${w.projectedMultiple.toFixed(1)}\u00d7 by period end, from the 30-day pace`),
+    stat('Per day', usd(w.perDayActual), `30-day average \u00b7 need ${usd(w.perDayNeeded)} to break even`),
+    stat('Days left', Math.ceil(w.daysLeft), `${Math.round(P.fraction * 100)}% through the period`),
+    stat('All time', usd(w.allTimeValue), `${w.allTimeMultiple.toFixed(1)}\u00d7 over ${w.monthsTracked.toFixed(1)} mo`)
+  ].join('');
 }
 
 const stat = (k, v, s) =>
@@ -459,7 +588,7 @@ function drawDaily(s) {
     const v = (max / 4) * i, yy = y(v);
     svg('line', { x1: L, y1: yy, x2: W - R, y2: yy, class: i ? 'gridline' : 'baseline' }, el);
     const t = svg('text', { x: L - 8, y: yy + 3.5, 'text-anchor': 'end', class: 'axlab' }, el);
-    t.textContent = moneyC(v);
+    t.textContent = money1(v);
   }
 
   data.forEach((v, i) => {
@@ -487,7 +616,7 @@ function drawDaily(s) {
     'stroke-width': 1.5, 'stroke-dasharray': '5 4'
   }, el);
   const lab = svg('text', { x: W - R - 4, y: py - 6, 'text-anchor': 'end', class: 'axlab', fill: 'var(--ink-2)' }, el);
-  lab.textContent = `break even ${money(needPerDay)}/day`;
+  lab.textContent = MODE === 'actual' ? `the fee: ${usdC(needPerDay * (RATE || 1))}/day` : `break even ${usdC(needPerDay)}/day`;
 
   const over = data.filter(v => v >= needPerDay).length;
   $('#dailyTag').textContent = `${over} of ${today + 1} days beat the break-even pace`;
@@ -513,7 +642,7 @@ function renderSessions(data) {
   const max = Math.max(0.01, ...data.sessions.map(s => s.cost));
 
   $('#sSummary').innerHTML =
-    `<b>${data.total}</b> sessions · <b>${money(data.grandCost)}</b> of API value`;
+    `<b>${data.total}</b> sessions \u00b7 <b>${money(data.grandCost)}</b> ${lens().noun}`;
 
   for (const s of data.sessions) {
     const tr = document.createElement('tr');
@@ -593,7 +722,7 @@ async function openSession(id) {
     </div>
 
     <div class="statline" style="margin-top:0">
-      ${stat('API value', money(s.cost), `${s.requests.toLocaleString()} responses`)}
+      ${stat(lens().col, money(s.cost), `${s.requests.toLocaleString()} responses`)}
       ${stat('Active time', dur(s.activeMs), perHr ? money(perHr) + '/hr while working' : '')}
       ${stat('Prompts', s.prompts || '—', s.costPerPrompt ? money(s.costPerPrompt) + ' each' : '')}
       ${stat('Delegated', money(s.subCost), `${s.subRequests} subagent responses`)}
@@ -641,7 +770,7 @@ function drawTimeline(s) {
   for (let i = 0; i <= 3; i++) {
     const v = (max / 3) * i, yy = Y(v);
     svg('line', { x1: L, y1: yy, x2: W - R, y2: yy, class: i ? 'gridline' : 'baseline' }, el);
-    svg('text', { x: L - 7, y: yy + 3.5, 'text-anchor': 'end', class: 'axlab' }, el).textContent = moneyC(v);
+    svg('text', { x: L - 7, y: yy + 3.5, 'text-anchor': 'end', class: 'axlab' }, el).textContent = money1(v);
   }
   let d = '';
   for (const p of pts) d += (d ? 'L' : 'M') + X(p.t).toFixed(1) + ' ' + Y(p.c).toFixed(1);
@@ -691,7 +820,7 @@ function drawBDaily(daily) {
   for (let i = 0; i <= 4; i++) {
     const v = (max / 4) * i, yy = y(v);
     svg('line', { x1: L, y1: yy, x2: W - R, y2: yy, class: i ? 'gridline' : 'baseline' }, el);
-    svg('text', { x: L - 8, y: yy + 3.5, 'text-anchor': 'end', class: 'axlab' }, el).textContent = moneyC(v);
+    svg('text', { x: L - 8, y: yy + 3.5, 'text-anchor': 'end', class: 'axlab' }, el).textContent = money1(v);
   }
   const step = Math.ceil(daily.length / 14);
   daily.forEach((d, i) => {
@@ -723,7 +852,7 @@ function drawHours(hours) {
   for (let i = 0; i <= 3; i++) {
     const v = (max / 3) * i, yy = y(v);
     svg('line', { x1: L, y1: yy, x2: W - R, y2: yy, class: i ? 'gridline' : 'baseline' }, el);
-    svg('text', { x: L - 8, y: yy + 3.5, 'text-anchor': 'end', class: 'axlab' }, el).textContent = moneyC(v);
+    svg('text', { x: L - 8, y: yy + 3.5, 'text-anchor': 'end', class: 'axlab' }, el).textContent = money1(v);
   }
   const nowH = new Date().getHours();
   hours.forEach((v, i) => {
@@ -783,6 +912,8 @@ function apply(s) {
   $('#livetext').textContent = s.scanning ? 'scanning' : 'live';
   if (document.activeElement !== $('#planName')) $('#planName').value = s.plan.name;
   if (document.activeElement !== $('#planUsd'))  $('#planUsd').value  = s.plan.monthlyUsd;
+  if (document.activeElement !== $('#planRenew') && s.period) $('#planRenew').value = s.period.renewalDay;
+  if (s.exchange) RATE = s.exchange.rate;
   if (ACTIVE === 'overview') renderOverview(s);
   if (ACTIVE === 'live')     renderFeed(s);
 }
@@ -802,12 +933,28 @@ function connect() {
 $('#planSave').onclick = async () => {
   await fetch('/api/config', {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ planName: $('#planName').value, monthlyUsd: Number($('#planUsd').value) })
+    body: JSON.stringify({ planName: $('#planName').value, monthlyUsd: Number($('#planUsd').value),
+                           renewalDay: Number($('#planRenew').value) || 1 })
   });
   const b = $('#planSave'); b.textContent = 'Saved'; setTimeout(() => b.textContent = 'Save', 1400);
 };
 $('#planUsd').addEventListener('keydown', e => { if (e.key === 'Enter') $('#planSave').click(); });
 $('#planName').addEventListener('keydown', e => { if (e.key === 'Enter') $('#planSave').click(); });
+
+/* Retail / Deal / Actual. Saved server-side so the gauge follows. */
+function syncModeSwitch() {
+  $$('#modeSwitch button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === MODE)));
+}
+$$('#modeSwitch button').forEach(b => b.onclick = async () => {
+  MODE = b.dataset.mode;
+  modePendingUntil = Date.now() + 3000;
+  syncModeSwitch();
+  if (STATE) { renderOverview(STATE); if (ACTIVE === 'live') renderFeed(STATE); }
+  if (ACTIVE === 'sessions')  loadSessions(true);
+  if (ACTIVE === 'breakdown') loadBreakdown();
+  await fetch('/api/config', { method: 'POST', headers: { 'content-type': 'application/json' },
+                               body: JSON.stringify({ pricingMode: MODE }) }).catch(() => {});
+});
 
 $('#btnMini').onclick = async () => {
   // Ask the server to spawn a real OS window; fall back to a popup if it can't.

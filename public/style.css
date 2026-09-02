@@ -212,3 +212,10 @@ footer{color:var(--muted);font-size:11px;margin:24px 2px 6px;line-height:1.7}
 .inst .fig .v{font-size:14px;font-weight:640;font-variant-numeric:tabular-nums}
 .inst .fig .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
 @media(max-width:700px){.inst .fig.opt{display:none}}
+
+/* pricing lens switch ----------------------------------------------------- */
+.seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--hair);border-radius:9px;padding:2px;gap:1px}
+.seg button{background:none;border:none;color:var(--muted);font:inherit;font-size:12.5px;padding:5px 12px;
+            border-radius:7px;cursor:pointer;transition:.15s}
+.seg button:hover{color:var(--ink);background:transparent}
+.seg button[aria-pressed="true"]{background:var(--surface-3);color:var(--ink);font-weight:600}

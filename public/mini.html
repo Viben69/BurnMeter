@@ -80,15 +80,22 @@ body:hover #ctl,#ctl:focus-within{opacity:1}
 const $ = s => document.querySelector(s);
 
 /* ========================================================== formatting === */
-const money = (v, exact) => {
+/* Every figure from the server is retail (pay-as-you-go API cost). In
+   'actual' and 'deal' modes it is scaled by RATE - your fee per retail dollar
+   over the last 30 days - to show your real share of what you pay. usd() is
+   for money that is already real (the fee) and is never scaled. */
+let MODE = 'retail', RATE = null;
+const usd = (v, exact) => {
   const n = Math.abs(Number(v) || 0);
   if (n >= 100000) return '$' + (n / 1000).toFixed(0) + 'k';
   if (n >= 10000)  return '$' + (n / 1000).toFixed(1) + 'k';
   if (n >= 1000 && !exact) return '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
   return '$' + n.toFixed(2);
 };
+const scaled = v => (MODE !== 'retail' && RATE != null) ? (Number(v) || 0) * RATE : (Number(v) || 0);
+const money = (v, exact) => usd(scaled(v), exact);
 const plain = v => {
-  const n = Math.abs(Number(v) || 0);
+  const n = Math.abs(scaled(v));
   return n >= 1000 ? n.toFixed(0) : n.toFixed(2);
 };
 const toks = n => {
@@ -127,13 +134,13 @@ const SERIF = "Georgia,'Times New Roman',serif";
 
 /* =============================================================== readings = */
 const METRICS = [
-  { id: 'rate', name: 'Burn rate', label: 'BURN RATE', unit: '/hr',
+  { id: 'rate', money: true, name: 'Burn rate', label: 'BURN RATE', unit: '/hr',
     val: d => money(d.rate), raw: d => d.rate, frac: d => gf(d.rate),
     sub: () => '5 min average' },
-  { id: 'today', name: 'Today', label: 'TODAY', unit: '',
+  { id: 'today', money: true, name: 'Today', label: 'TODAY', unit: '',
     val: d => money(d.today), raw: d => d.today, frac: d => gf(d.today),
     sub: () => 'since midnight' },
-  { id: 'session', name: 'Session', label: 'THIS SESSION', unit: '',
+  { id: 'session', money: true, name: 'Session', label: 'THIS SESSION', unit: '',
     val: d => money(d.live ? d.live.cost : 0), raw: d => d.live ? d.live.cost : 0,
     frac: d => gf(d.live ? d.live.cost : 0),
     sub: d => d.live ? esc(String(d.live.title).slice(0, 34)) : 'no live session' },
@@ -142,19 +149,19 @@ const METRICS = [
     frac: d => Math.min(1, (d.instances || 0) / 6),
     sub: d => !d.instances ? 'no active sessions'
       : `${d.instancesHot || 0} mid-response · ${money(d.instanceRate || 0)}/hr combined` },
-  { id: 'combined', name: 'All windows', label: 'ALL WINDOWS', unit: '/hr',
+  { id: 'combined', money: true, name: 'All windows', label: 'ALL WINDOWS', unit: '/hr',
     val: d => money(d.instanceRate || 0), raw: d => d.instanceRate || 0,
     frac: d => gf(d.instanceRate || 0),
     sub: d => `${d.instances || 0} session${d.instances === 1 ? '' : 's'} · ${money(d.instanceCost || 0)} in 15 min` },
-  { id: 'month', name: 'Month', label: 'THIS MONTH', unit: '',
+  { id: 'month', money: true, name: 'Month', label: 'THIS MONTH', unit: '',
     val: d => money(d.month), raw: d => d.month, frac: d => Math.min(1, d.multiple / 20),
-    sub: d => d.multiple.toFixed(1) + 'x the plan fee' },
+    sub: d => MODE === 'actual' ? 'of your ' + usd(d.fee) + ' fee, by usage' : d.multiple.toFixed(1) + 'x the plan fee' },
   { id: 'worth', name: "Money's worth", label: "MONEY'S WORTH", unit: 'x',
     val: d => d.multiple.toFixed(2), raw: d => d.multiple, frac: d => Math.min(1, d.multiple / 20),
-    sub: d => money(d.month) + ' on a ' + money(d.fee) + ' plan' },
-  { id: 'alltime', name: 'All time', label: 'ALL TIME', unit: '',
+    sub: d => money(d.month) + ' on a ' + usd(d.fee) + ' plan' },
+  { id: 'alltime', money: true, name: 'All time', label: 'ALL TIME', unit: '',
     val: d => money(d.allTime), raw: d => d.allTime, frac: d => Math.min(1, d.allTime / 20000),
-    sub: () => 'total API value' },
+    sub: () => MODE === 'actual' ? 'your share, all time' : 'total, at API rates' },
   { id: 'tokens', name: 'Tokens/min', label: 'TOKENS / MIN', unit: '',
     val: d => toks(d.tokensLastMin), raw: d => d.tokensLastMin,
     frac: d => Math.min(1, d.tokensLastMin / 150000), sub: () => 'billable, last minute' },
@@ -199,8 +206,14 @@ let skin = 'dial';
 function reading(d) {
   const M = METRICS.find(x => x.id === metric) || METRICS[0];
   const frac = Math.max(0, Math.min(1, M.frac(d) || 0));
+  let sub = M.sub(d);
+  // In 'deal' the big number is what you pay; say what it would have been.
+  if (M.money && MODE === 'deal' && RATE != null) {
+    const retail = M.raw(d) || 0;
+    sub = usd(retail) + (M.unit || '') + ' retail \u00b7 ' + sub;
+  }
   return { id: M.id, label: M.label, value: M.val(d), unit: M.unit,
-           sub: M.sub(d), frac, n: M.raw(d) || 0, color: zone(frac) };
+           sub, frac, n: M.raw(d) || 0, color: zone(frac) };
 }
 
 /* ================================================================= faces = */
@@ -264,7 +277,7 @@ face('pump', 'Gas pump', 'plus tokens and rate', (d, m) => {
     ${win(16, 44, 152, 46, esc(m.label), esc(m.value) + m.unit, true)}
     ${win(176, 44, 128, 46, 'TOKENS PER MIN', toks(d.tokensLastMin))}
     <rect x="16" y="98" width="288" height="44" rx="4" fill="#2b2118"/>
-    <text x="28" y="115" font-family="${SANS}" font-size="7.5" letter-spacing="1.5" fill="#c9a765">PRICE PER HOUR</text>
+    <text x="28" y="115" font-family="${SANS}" font-size="7.5" letter-spacing="1.5" fill="#c9a765">${MODE === 'retail' ? 'PRICE PER HOUR' : 'YOUR COST PER HOUR'}</text>
     <text x="28" y="134" font-family="${MONO}" font-size="19" font-weight="700" fill="#f2c14e">$${plain(d.rate)}</text>
     <text x="292" y="115" text-anchor="end" font-family="${SANS}" font-size="7.5" letter-spacing="1.5" fill="#c9a765">TODAY</text>
     <text x="292" y="134" text-anchor="end" font-family="${MONO}" font-size="19" font-weight="700" fill="#f2c14e">${money(d.today, 1)}</text>`;
@@ -546,6 +559,8 @@ let LAST = null, pinned = false;
 function render(d) {
   if (!d) return;
   LAST = d;
+  MODE = d.mode || 'retail';
+  RATE = d.rate == null ? null : d.rate;
   const m = reading(d);
   const S = SKINS.find(x => x.id === skin) || SKINS[0];
   let body;

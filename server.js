@@ -61,11 +61,19 @@ const DEFAULT_CONFIG = {
   miniMetric: 'rate',
   miniSkin: 'dial',
   miniOnTop: false,
+  // Which lens every dollar figure is shown through:
+  //   retail - what this usage would cost on pay-as-you-go API rates
+  //   actual - your real share of the flat fee, allocated by usage
+  //   deal   - both side by side, with the discount between them
+  pricingMode: 'retail',
+  // Day of the month the subscription renews on (1-28). Turns "this month"
+  // into "this billing period", which is the thing the fee actually buys.
+  renewalDay: 1,
   // Set by POST /api/calibrate. { fiveHourAllowance, weekAllowance, ...At }
   calibration: null
 };
 
-const NUMERIC_KEYS = new Set(['monthlyUsd', 'port', 'lookbackDays', 'needleWindowSec', 'pollMs', 'miniScale']);
+const NUMERIC_KEYS = new Set(['monthlyUsd', 'port', 'lookbackDays', 'needleWindowSec', 'pollMs', 'miniScale', 'renewalDay']);
 
 function loadConfig() {
   let c = { ...DEFAULT_CONFIG };
@@ -557,6 +565,39 @@ function breakdown(from, key, limit = 12) {
     .slice(0, limit);
 }
 
+/*
+ * The fee buys a billing period, not a calendar month. If the plan renews on
+ * the 14th, "this month" is meaningless and "this period" is what matters.
+ */
+function periodStart(d = new Date()) {
+  const day = Math.min(28, Math.max(1, Math.round(Number(CONFIG.renewalDay)) || 1));
+  let y = d.getFullYear(), m = d.getMonth();
+  if (d.getDate() < day) m -= 1;                 // renewal not reached yet this month
+  return new Date(y, m, day).getTime();
+}
+function periodEnd(d = new Date()) {
+  const ps = new Date(periodStart(d));
+  return new Date(ps.getFullYear(), ps.getMonth() + 1, ps.getDate()).getTime();
+}
+
+/** Active hours and human prompts inside a window - the denominators for
+ *  "what am I really paying per hour / per prompt". */
+function windowStats(from) {
+  const last = new Map();
+  let activeMs = 0;
+  for (const e of events) {
+    if (e.t < from || !e.s) continue;
+    const prev = last.get(e.s);
+    if (prev != null) activeMs += Math.min(IDLE_GAP, Math.max(0, e.t - prev));
+    last.set(e.s, e.t);
+  }
+  let prompts = 0;
+  for (const sess of sessions.values())
+    for (const pr of sess.prompts.values())
+      if (pr.text && pr.t >= from) prompts++;
+  return { activeMs, prompts };
+}
+
 function startOfMonth(d = new Date()) { return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); }
 function endOfMonth(d = new Date())   { return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime(); }
 function startOfDay(d = new Date())   { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
@@ -922,16 +963,53 @@ function buildState() {
   const blockResetsIn = limits.fiveHourReset ? limits.fiveHourReset * 1000 - now : null;
   const weekResetsIn  = limits.weekReset ? limits.weekReset * 1000 - now : null;
 
-  // --- money's worth --------------------------------------------------------
+  // --- the three numbers --------------------------------------------------
+  //
+  //   fee      what you pay: flat, per billing period
+  //   retail   what the same usage would cost on pay-as-you-go API rates
+  //   rate     actual dollars per retail dollar = fee / retail over 30 days
+  //
+  // Everything else is one of those or a ratio of two. The trailing 30 days
+  // is the denominator because it is stable: a calendar month two days in
+  // projects nonsense, a rolling month does not.
   const fee = Math.max(0.01, Number(CONFIG.monthlyUsd) || 0);
-  const monthStart = startOfMonth(), monthEnd = endOfMonth();
-  const elapsed  = Math.max(1, now - monthStart);
-  const fraction = elapsed / (monthEnd - monthStart);
-  const projected = month.cost / fraction;
-  const multiple  = month.cost / fee;
-  const breakEvenAt = month.cost > 0 ? monthStart + (fee / month.cost) * elapsed : null;
-  const perDayNeeded = fee / ((monthEnd - monthStart) / 864e5);
-  const perDayActual = month.cost / (elapsed / 864e5);
+  const pStart = periodStart(), pEnd = periodEnd();
+  const period = sumRange(pStart);
+  const periodDays = (pEnd - pStart) / 864e5;
+  const elapsed  = Math.max(1, now - pStart);
+  const fraction = Math.min(1, elapsed / (pEnd - pStart));
+  const daysLeft = Math.max(0, (pEnd - now) / 864e5);
+
+  const d30 = sumRange(now - 30 * 864e5);
+  const retail30 = d30.cost;
+  const rate = retail30 > 0.01 ? fee / retail30 : null;       // null = no usage yet
+  const tokens30 = d30.in + d30.out + d30.read + d30.write;
+  const ws30 = windowStats(now - 30 * 864e5);
+  const activeHours30 = ws30.activeMs / 36e5;
+
+  // Projection from the rolling pace, not a two-day sample stretched across
+  // a month.
+  const perDay30 = retail30 / 30;
+  const projected = period.cost + perDay30 * daysLeft;
+  const multiple  = period.cost / fee;
+  const breakEvenAt = period.cost >= fee && period.cost > 0
+    ? pStart + (fee / period.cost) * elapsed : null;
+  const perDayNeeded = fee / periodDays;
+
+  const exchange = {
+    fee, retail30, rate,
+    multiple30: retail30 / fee,
+    discount: rate != null ? 1 - rate : null,               // negative = paying over retail
+    tokens30, activeHours30, prompts30: ws30.prompts,
+    perMtokRetail: tokens30 > 0 ? retail30 / (tokens30 / 1e6) : null,
+    perMtokActual: tokens30 > 0 ? fee / (tokens30 / 1e6) : null,
+    perHourRetail: activeHours30 > 0.05 ? retail30 / activeHours30 : null,
+    perHourActual: activeHours30 > 0.05 ? fee / activeHours30 : null,
+    perPromptRetail: ws30.prompts > 0 ? retail30 / ws30.prompts : null,
+    perPromptActual: ws30.prompts > 0 ? fee / ws30.prompts : null
+  };
+  const perDayActual = perDay30;
+  const monthStart = pStart, monthEnd = pEnd;          // keep the old names alive below
 
   // All-time: how many months of subscription have you earned back?
   const span = allTimeRange();
@@ -964,15 +1042,24 @@ function buildState() {
 
     rate: { perHour: rateNow, instant: rateInst, lastHour: rate1h, windowSec: CONFIG.needleWindowSec },
 
-    windows: { today, hour24, block, week7, month, all, blockResetsIn, weekResetsIn },
+    windows: { today, hour24, block, week7, month: period, d30, all, blockResetsIn, weekResetsIn },
+
+    mode: CONFIG.pricingMode || 'retail',
+    exchange,
+    period: {
+      start: pStart, end: pEnd, days: periodDays, fraction, daysLeft,
+      renewalDay: CONFIG.renewalDay || 1,
+      retail: period.cost, requests: period.requests,
+      feeElapsed: fee * fraction                            // what the clock has consumed
+    },
 
     worth: {
-      fee, spent: month.cost, multiple, projected,
+      fee, spent: period.cost, multiple, projected,
       projectedMultiple: projected / fee,
       monthFraction: fraction,
-      breakEvenAt, brokeEven: month.cost >= fee,
+      breakEvenAt, brokeEven: period.cost >= fee,
       perDayNeeded, perDayActual,
-      daysLeft: (monthEnd - now) / 864e5,
+      daysLeft,
       allTimeValue: all.cost,
       allTimeFees: fee * monthsTracked,
       allTimeMultiple: all.cost / (fee * monthsTracked),
@@ -1014,8 +1101,9 @@ function buildMini() {
   const now = Date.now();
   const limits = readLimits();
   const nw = CONFIG.needleWindowSec * 1000;
-  const month = sumRange(startOfMonth());
+  const month = sumRange(periodStart());
   const fee = Math.max(0.01, Number(CONFIG.monthlyUsd) || 0);
+  const retail30m = sumRange(now - 30 * 864e5).cost;
   const today = sumRange(startOfDay());
   const blockResetsIn = limits.fiveHourReset ? limits.fiveHourReset * 1000 - now : null;
   const active = activeSessions();
@@ -1047,6 +1135,9 @@ function buildMini() {
     spark,
     multiple: month.cost / fee,
     fee,
+    rate: retail30m > 0.01 ? fee / retail30m : null,     // actual $ per retail $
+    mode: CONFIG.pricingMode || 'retail',
+    periodFraction: Math.min(1, (now - periodStart()) / (periodEnd() - periodStart())),
     planName: CONFIG.planName,
     tokensLastMin: (() => { let t = 0; for (let i = events.length - 1; i >= 0; i--) { const e = events[i]; if (e.t < now - 60e3) break; t += e.b; } return t; })(),
     fiveHourPct: limits.fiveHourPct,
@@ -1208,6 +1299,8 @@ const server = http.createServer(async (req, res) => {
     if (isFinite(Number(j.miniScale))) CONFIG.miniScale = Math.min(2.5, Math.max(0.6, Number(j.miniScale)));
     if (typeof j.miniMetric === 'string') CONFIG.miniMetric = j.miniMetric.slice(0, 20);
     if (typeof j.miniSkin === 'string') CONFIG.miniSkin = j.miniSkin.slice(0, 20);
+    if (['retail', 'actual', 'deal'].includes(j.pricingMode)) CONFIG.pricingMode = j.pricingMode;
+    if (isFinite(Number(j.renewalDay))) CONFIG.renewalDay = Math.min(28, Math.max(1, Math.round(Number(j.renewalDay))));
     if (typeof j.miniOnTop === 'boolean') CONFIG.miniOnTop = j.miniOnTop;
     if (isFinite(Number(j.needleWindowSec)) && Number(j.needleWindowSec) >= 30) CONFIG.needleWindowSec = Number(j.needleWindowSec);
     saveConfig(CONFIG);

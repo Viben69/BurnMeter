@@ -148,11 +148,42 @@ just shortcuts for sizes that suit the 2:1 artwork.
 
 ## What the numbers mean
 
-**The dollar figures are not a bill.** On a subscription you pay the flat fee
-and nothing else. Every dollar BurnMeter shows is *what this same usage would
-have cost on the pay-as-you-go API* — the value you're extracting. That's the
-only honest way to answer "am I getting my money's worth", because the plan
-itself is a flat rate with no dollar meter attached.
+There are only three numbers, and everything on the page is one of them or a
+ratio of two of them:
+
+| | |
+|---|---|
+| **the fee** | what you pay — flat, per billing period, whatever you use |
+| **retail** | what the same usage would cost on pay-as-you-go API rates |
+| **the rate** | fee ÷ retail over the last 30 days — actual dollars per retail dollar |
+
+The switch in the header picks which one every dollar figure speaks in:
+
+**Retail.** The counterfactual. "$387 this period" means the API would have
+billed you $387 for what you did. It is not a bill — you paid the fee — but
+it's the only honest way to ask whether the plan is worth it. The hero card
+says what this period would have cost without the plan, whether it's broken
+even yet, and where it'll land by period end.
+
+**Actual.** Your real money. The fee, and where it went: every session, prompt,
+model and hour priced at its share of the fee — its retail cost × the rate. A
+$152 prompt at API rates is $5 of your $200. The hero card shows the fee, how
+much of it the clock has consumed, and how much your usage has "used" so far.
+Thirty days of usage always adds up to exactly the fee, which is the point.
+
+**Deal.** Both, side by side, so the discount is visible: `$45.97 → $1.55` per
+active hour. The hero card shows the discount, the multiple, and cents per
+retail dollar.
+
+The rate uses a rolling 30 days rather than the calendar month because it's
+stable. A calendar month two days in projects nonsense — "43× by month end"
+off a two-day sample — and a rolling month does not.
+
+### Billing period
+
+The fee buys a billing period, not a calendar month. Set the day your plan
+renews next to the price in the header, and "this period" runs from the last
+renewal to the next. Defaults to the 1st.
 
 | Reading | Where it comes from |
 |---|---|

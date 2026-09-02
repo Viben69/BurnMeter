@@ -28,8 +28,17 @@
       <input class="name" id="planName" aria-label="Plan name" placeholder="Plan">
       <span style="color:var(--muted)">$</span>
       <input class="money" id="planUsd" type="number" min="0" step="1" aria-label="Monthly plan price">
-      <span style="color:var(--muted);font-size:12px">/mo</span>
+      <span style="color:var(--muted);font-size:12px">/mo, renews on the</span>
+      <input class="money" id="planRenew" type="number" min="1" max="28" step="1" style="width:52px"
+             aria-label="Day of the month the plan renews" title="Day of the month the subscription renews">
       <button id="planSave" class="icon">Save</button>
+    </div>
+
+    <div class="seg" id="modeSwitch" role="group" aria-label="Pricing lens"
+         title="Retail: what this would cost on pay-as-you-go. Actual: your real share of the fee. Deal: both.">
+      <button data-mode="retail" aria-pressed="true">Retail</button>
+      <button data-mode="deal"   aria-pressed="false">Deal</button>
+      <button data-mode="actual" aria-pressed="false">Actual</button>
     </div>
 
     <button class="icon" id="btnMini"  title="Open the floating gauge in its own window">◱ Gauge</button>
@@ -67,7 +76,7 @@
       </div>
 
       <div class="card">
-        <h2>Money's worth <span class="tag" id="worthTag"></span></h2>
+        <h2><span id="worthTitle">Without the plan</span> <span class="tag" id="worthTag"></span></h2>
         <div class="worthhdr">
           <div>
             <div class="bignum num" id="worthSpent">$0.00</div>
@@ -75,7 +84,7 @@
           </div>
           <div style="text-align:right">
             <div class="bignum num" id="worthMult">0.00&times;</div>
-            <div class="sub2">the plan fee</div>
+            <div class="sub2" id="worthSub2">the plan fee</div>
           </div>
         </div>
         <div class="mtrack" style="height:14px;border-radius:7px">
@@ -94,7 +103,7 @@
       </div>
 
       <div class="card">
-        <h2>Spend windows</h2>
+        <h2>Usage <span class="tag" id="windowsTag"></span></h2>
         <div class="statline" id="windows" style="margin-top:0"></div>
         <h2 style="margin-top:18px">Last 24 hours</h2>
         <div class="chartbox"><svg id="spark" viewBox="0 0 620 118" preserveAspectRatio="none"
@@ -105,7 +114,7 @@
     <div class="card" style="margin-top:13px">
       <h2>This month, day by day <span class="tag" id="dailyTag"></span></h2>
       <div class="legend">
-        <span><i class="swatch" style="background:var(--s1)"></i>daily API value</span>
+        <span><i class="swatch" style="background:var(--s1)"></i><span id="dailyLegend">daily, at API rates</span></span>
         <span><i class="swatch" style="background:var(--s2)"></i>today</span>
         <span><i class="swatch" style="background:var(--baseline);height:2px;width:16px;border-radius:0"></i>break-even pace</span>
       </div>
@@ -147,7 +156,7 @@
             <th class="n">Prompts</th>
             <th class="n">$/hr</th>
             <th class="n">Delegated</th>
-            <th class="n">API value</th>
+            <th class="n" id="thValue">At API rates</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -209,7 +218,7 @@
           <thead><tr>
             <th>Time</th><th>Model</th><th>Project</th><th></th>
             <th class="n">In</th><th class="n">Out</th><th class="n">Think</th>
-            <th class="n">Cache read</th><th class="n">Cache write</th><th class="n">Value</th>
+            <th class="n">Cache read</th><th class="n">Cache write</th><th class="n" id="feedThValue">At API rates</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -219,8 +228,7 @@
   </section>
 
   <footer>
-    Every dollar here is <b>API-equivalent value</b> — what this usage would have cost on pay-as-you-go rates.
-    It is not a bill: on a subscription you pay the flat fee and nothing else.<br>
+    <span id="footNote"></span><br>
     <span id="footStats"></span>
   </footer>
 </div>
