@@ -838,6 +838,65 @@ function allTimeRange() {
   return { from: events[0].t, to: events[events.length - 1].t };
 }
 
+/* ------------------------------------------------------------- instances --
+ * Which Claude Code windows are actually running right now.
+ *
+ * The statusline hook would tell us the current session id, but it only fires
+ * in the terminal UI - in the desktop app it never runs, which left this blind
+ * and the "this session" reading permanently empty. The transcripts already
+ * carry the answer: a session that produced a response in the last few minutes
+ * is live, and each one is a separate window. No hook needed.
+ */
+const ACTIVE_WINDOW_MS = 15 * 60e3;   // still counts as running
+const HOT_WINDOW_MS    = 90e3;        // mid-response right now
+
+function activeSessions(windowMs = ACTIVE_WINDOW_MS) {
+  const now = Date.now(), from = now - windowMs;
+  const map = new Map();
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.t < from) break;
+    if (!e.s) continue;
+    let a = map.get(e.s);
+    if (!a) {
+      a = { id: e.s, cost: 0, requests: 0, tokens: 0, subCost: 0,
+            first: e.t, last: e.t, models: Object.create(null) };
+      map.set(e.s, a);
+    }
+    a.cost += e.c; a.requests++; a.tokens += e.b;
+    if (e.sub) a.subCost += e.c;
+    if (e.t > a.last) a.last = e.t;
+    if (e.t < a.first) a.first = e.t;
+    a.models[e.m] = (a.models[e.m] || 0) + 1;
+  }
+
+  return [...map.values()].map(a => {
+    const s = sessions.get(a.id);
+    const models = Object.entries(a.models).sort((x, y) => y[1] - x[1]);
+    // Rate over the window we actually observed, floored at a minute so a
+    // single response doesn't read as an absurd hourly figure.
+    const spanHr = Math.max(1 / 60, (now - a.first) / 36e5);
+    return {
+      id: a.id,
+      title: s ? sessionTitle(s) : a.id.slice(0, 8),
+      project: s ? (s.project || 'unknown') : 'unknown',
+      cwd: s ? s.cwd : null,
+      windowCost: a.cost,
+      windowRequests: a.requests,
+      windowTokens: a.tokens,
+      subCost: a.subCost,
+      perHour: a.cost / spanHr,
+      lastSeen: a.last,
+      idleMs: now - a.last,
+      hot: (now - a.last) < HOT_WINDOW_MS,
+      topModel: models.length ? models[0][0] : null,
+      sessionCost: s ? s.cost : a.cost,
+      sessionRequests: s ? s.requests : a.requests,
+      sessionStart: s ? s.start : a.first
+    };
+  }).sort((x, y) => y.lastSeen - x.lastSeen);
+}
+
 function buildState() {
   const now = Date.now();
   const limits = readLimits();
@@ -878,10 +937,15 @@ function buildState() {
   const span = allTimeRange();
   const monthsTracked = Math.max(1 / 30, (span.to - span.from) / (30.44 * 864e5));
 
-  // The current live session, if the statusline told us which one it is.
+  // Which windows are running. The statusline names the current one when it is
+  // available; otherwise the most recently active session is the best answer,
+  // and it is the right one in the overwhelmingly common case.
+  const active = activeSessions();
   let live = null;
   if (limits.sessionId && sessions.has(limits.sessionId)) {
     live = sessionSummary(sessions.get(limits.sessionId));
+  } else if (active.length && sessions.has(active[0].id)) {
+    live = sessionSummary(sessions.get(active[0].id));
   }
 
   return {
@@ -931,6 +995,9 @@ function buildState() {
     },
 
     live,
+    active,
+    activeCount: active.length,
+    activeCost: active.reduce((n, a) => n + a.windowCost, 0),
     spark:  sparkline(24, 48),
     daily:  dailyThisMonth(),
     byModel:   breakdown(startOfMonth(), 'm'),
@@ -951,9 +1018,12 @@ function buildMini() {
   const fee = Math.max(0.01, Number(CONFIG.monthlyUsd) || 0);
   const today = sumRange(startOfDay());
   const blockResetsIn = limits.fiveHourReset ? limits.fiveHourReset * 1000 - now : null;
+  const active = activeSessions();
+  let liveId = limits.sessionId && sessions.has(limits.sessionId) ? limits.sessionId
+             : (active.length ? active[0].id : null);
   let live = null;
-  if (limits.sessionId && sessions.has(limits.sessionId)) {
-    const s = sessions.get(limits.sessionId);
+  if (liveId && sessions.has(liveId)) {
+    const s = sessions.get(liveId);
     live = { cost: s.cost, requests: s.requests, title: sessionTitle(s), start: s.start };
   }
   // A short burn history for the faces that draw a shape rather than a number
@@ -986,6 +1056,14 @@ function buildMini() {
     blockResetsIn,
     stale: limits.stale,
     live,
+    instances: active.length,
+    instancesHot: active.filter(a => a.hot).length,
+    instanceCost: active.reduce((n, a) => n + a.windowCost, 0),
+    instanceRate: active.reduce((n, a) => n + a.perHour, 0),
+    instanceList: active.slice(0, 6).map(a => ({
+      title: a.title, project: a.project, perHour: a.perHour,
+      windowCost: a.windowCost, hot: a.hot, idleMs: a.idleMs
+    })),
     scale: CONFIG.miniScale,
     metric: CONFIG.miniMetric,
     skin: CONFIG.miniSkin,

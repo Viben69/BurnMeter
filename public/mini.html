@@ -136,7 +136,16 @@ const METRICS = [
   { id: 'session', name: 'Session', label: 'THIS SESSION', unit: '',
     val: d => money(d.live ? d.live.cost : 0), raw: d => d.live ? d.live.cost : 0,
     frac: d => gf(d.live ? d.live.cost : 0),
-    sub: d => d.live ? dur(Date.now() - d.live.start) + ' in' : 'no live session' },
+    sub: d => d.live ? esc(String(d.live.title).slice(0, 34)) : 'no live session' },
+  { id: 'instances', name: 'Instances', label: 'RUNNING NOW', unit: '',
+    val: d => String(d.instances || 0), raw: d => d.instances || 0,
+    frac: d => Math.min(1, (d.instances || 0) / 6),
+    sub: d => !d.instances ? 'no active sessions'
+      : `${d.instancesHot || 0} mid-response · ${money(d.instanceRate || 0)}/hr combined` },
+  { id: 'combined', name: 'All windows', label: 'ALL WINDOWS', unit: '/hr',
+    val: d => money(d.instanceRate || 0), raw: d => d.instanceRate || 0,
+    frac: d => gf(d.instanceRate || 0),
+    sub: d => `${d.instances || 0} session${d.instances === 1 ? '' : 's'} · ${money(d.instanceCost || 0)} in 15 min` },
   { id: 'month', name: 'Month', label: 'THIS MONTH', unit: '',
     val: d => money(d.month), raw: d => d.month, frac: d => Math.min(1, d.multiple / 20),
     sub: d => d.multiple.toFixed(1) + 'x the plan fee' },
@@ -487,7 +496,9 @@ face('term', 'Terminal', 'everything at once', (d) => {
            zone((limPct(d, 'fiveHour') || 0) / 100))}
     ${line(118, 'WEEK', bar(limPct(d, 'week')) + ' ' + limText(d, 'week') + '%',
            zone((limPct(d, 'week') || 0) / 100))}
-    ${line(136, 'TOK/M', toks(d.tokensLastMin))}
+    ${line(136, 'WINDOWS', (d.instances || 0) + ' active' +
+        (d.instances ? '  ' + money(d.instanceRate || 0) + '/hr' : '') +
+        '   tok/m ' + toks(d.tokensLastMin))}
     <rect x="150" y="128" width="7" height="10" fill="#7dd88a">
       <animate attributeName="opacity" values="1;1;0;0" dur="1.1s" repeatCount="indefinite"/></rect>`;
 });

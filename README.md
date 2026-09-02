@@ -199,6 +199,24 @@ is what makes the `$/hr` column mean something. The table shows both.
 
 ---
 
+## Running right now
+
+With several Claude Code windows open, the top of the dashboard lists every one
+that is currently active — what each is costing per hour, its spend over the
+last 15 minutes, tokens, and the session total. A pulsing dot marks the ones
+mid-response. Click any row to drill into that session.
+
+This is derived from the transcripts, not from the statusline hook. A session
+that produced a response in the last 15 minutes is running; one in the last 90
+seconds is mid-response. That matters because the hook never fires in the
+desktop app, which used to leave "this session" permanently empty and gave no
+way to tell several concurrent windows apart.
+
+The gauge has two matching readings: **Instances** (how many windows, how many
+mid-response) and **All windows** (their combined burn rate).
+
+---
+
 ## Sessions
 
 The **Sessions** tab is the "where did it actually go" view. Every session, with

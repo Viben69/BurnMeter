@@ -171,6 +171,8 @@ function drawGauge(rate) {
 // ========================================================= overview render ==
 
 function renderOverview(s) {
+  renderInstances(s);
+
   // --- gauge ---
   drawGauge(s.rate.perHour);
   $('#rateWindow').textContent = `${Math.round(s.rate.windowSec / 60)} min average`;
@@ -297,6 +299,42 @@ function renderUpdate(s) {
     // The server relaunches itself; the SSE stream reconnects on its own.
     setTimeout(() => location.reload(), 4000);
   };
+}
+
+/*
+ * Every Claude Code window that has produced a response recently, and what each
+ * one is costing. Derived from the transcripts, so it works without the
+ * statusline hook - which is what made this invisible in the desktop app.
+ */
+function renderInstances(s) {
+  const card = $('#instancesCard');
+  const list = s.active || [];
+  if (!list.length) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+
+  const hot = list.filter(a => a.hot).length;
+  $('#instancesTag').innerHTML =
+    `${list.length} session${list.length > 1 ? 's' : ''} active` +
+    (hot ? ` · <span style="color:var(--good)">${hot} mid-response</span>` : '') +
+    ` · ${money(s.activeCost)} in the last 15 min`;
+
+  $('#instances').innerHTML = list.map(a => `
+    <div class="inst" data-sid="${esc(a.id)}" style="cursor:pointer">
+      <span class="beat${a.hot ? ' hot' : ''}"></span>
+      <div class="who">
+        <div class="t">${esc(a.title)}</div>
+        <div class="p">${esc(a.project)}${a.topModel ? ' · ' + esc(shortModel(a.topModel)) : ''}
+          · ${a.hot ? 'now' : dur(a.idleMs) + ' idle'}</div>
+      </div>
+      <div class="fig"><div class="v">${moneyC(a.perHour)}</div><div class="k">per hour</div></div>
+      <div class="fig opt"><div class="v">${moneyC(a.windowCost)}</div><div class="k">15 min</div></div>
+      <div class="fig opt"><div class="v">${toks(a.windowTokens)}</div><div class="k">tokens</div></div>
+      <div class="fig"><div class="v">${money(a.sessionCost)}</div><div class="k">session</div></div>
+    </div>`).join('');
+
+  $$('#instances .inst').forEach(el => {
+    el.onclick = () => openSession(el.dataset.sid);
+  });
 }
 
 const stat = (k, v, s) =>
