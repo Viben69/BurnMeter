@@ -1,7 +1,7 @@
 {
   "version": "1.3.0",
   "notes": "Retail / Deal / Actual switch: see every figure as pay-as-you-go cost, as your real share of the fee, or both. Billing period instead of calendar month, and projections from the 30-day pace.",
-  "published": "2026-09-02T12:12:16.731Z",
+  "published": "2026-09-02T12:13:02.411Z",
   "files": {
     "server.js": "40e083b648d1908746bff77a4ae2a3d7886c8d414b3667592f68a0be8d0f09b2",
     "statusline.js": "e4b2ae9eee10d3573616ce8cc1f3d0afcbd2052a6911ed9a927ce975b1c1f2d7",
@@ -21,7 +21,7 @@
     "public/icon.png": "5fb9ba83cb57008b97fff3ba910a40e4a993859fd58ac47245fc22a7cc41f94a",
     "public/icon.svg": "e1b02e53c1cad9b675d4a2a4af1f95d5997dbf8204359ad84a422189e65093ee",
     "public/index.html": "14507126b7c012ed1b5a5c1905291c67eff3a71ea6c722439fc18e99c56f7dff",
-    "public/mini.html": "435f4d4a4b4826b1fd310d90b83047739e63da135d02ebd12542f3806f8e042f",
+    "public/mini.html": "bcea74b560a5954e0ae950c6ef6c330b4409b5239b6d9af54cae524fea75c8db",
     "public/style.css": "1b19fbbdac970d5eabb70cfae39f36ef3ea0b1b41e85d3ed7eeb8854d5bca63d",
     "desktop/autostart.vbs": "2df7700d837f2a3ac66ecf952e5bf1f9d0d0492fec20d9c87cb7141270cf30b9",
     "desktop/burnmeter.ico": "3ea281c506acedd114165e422aee5555f64d00d5f3502559801da57b03778b75",
