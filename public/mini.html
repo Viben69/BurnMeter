@@ -518,9 +518,9 @@ face('term', 'Terminal', 'everything at once', (d) => {
 
 /* -- 11. odo: mechanical odometer --------------------------------------- */
 face('odo', 'Odometer', 'lifetime total', (d) => {
-  const total = scaled(d.allTime);           // follows the lens like everything else
-  const whole = Math.floor(total).toString().padStart(5, '0').slice(-5);
-  const frac = (total % 1).toFixed(2).slice(2);
+  const reading = scaled(d.allTime);         // follows the lens like everything else
+  const whole = Math.floor(reading).toString().padStart(5, '0').slice(-5);
+  const frac = (reading % 1).toFixed(2).slice(2);
   const cells = (whole + '.' + frac).split('');
   const widths = cells.map(c => c === '.' ? 12 : 28);
   const total = widths.reduce((a, b) => a + b, 0);

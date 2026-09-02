@@ -36,6 +36,35 @@ const SKIP = new Set([
 
 const sha256 = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
+/*
+ * A syntax error in an HTML page's inline <script> is silent: the file loads,
+ * the tag is ignored, and the page renders blank. update.js already refuses to
+ * install a .js file that will not parse; this extends the same guarantee to
+ * the script inside our HTML, which is where most of the gauge lives.
+ */
+function checkInlineScripts() {
+  const vm = require('vm');
+  const bad = [];
+  for (const dir of DIRS) {
+    const d = path.join(APP_DIR, dir);
+    if (!fs.existsSync(d)) continue;
+    for (const name of fs.readdirSync(d)) {
+      if (!name.endsWith('.html')) continue;
+      const html = fs.readFileSync(path.join(d, name), 'utf8');
+      const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+      let m, i = 0;
+      while ((m = re.exec(html))) {
+        i++;
+        if (!m[1].trim()) continue;
+        try { new vm.Script(m[1], { filename: dir + '/' + name + ' <script ' + i + '>' }); }
+        catch (e) { bad.push(dir + '/' + name + ' script #' + i + ': ' + e.message); }
+      }
+    }
+  }
+  return bad;
+}
+
+
 function collect() {
   const files = {};
   for (const f of ROOT_FILES) {
@@ -88,6 +117,14 @@ if (notes == null) {
   // Keep the previous notes rather than silently blanking them.
   try { notes = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'version.json'), 'utf8')).notes || ''; }
   catch { notes = ''; }
+}
+
+const broken = checkInlineScripts();
+if (broken.length) {
+  console.error('\nRefusing to cut a release - an inline script will not parse:\n');
+  for (const b of broken) console.error('  ' + b);
+  console.error('\nA page with a broken inline script renders blank, silently.\n');
+  process.exit(1);
 }
 
 const files = collect();
