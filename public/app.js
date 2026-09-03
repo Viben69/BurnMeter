@@ -575,14 +575,18 @@ function drawSpark(data) {
 
 function drawDaily(s) {
   const el = $('#daily'); clear(el);
-  const data = s.daily;
+  // One bar per day of the billing period. Days not reached yet are ghosted.
+  const data = s.daily || [];
   const W = 940, H = 220, L = 52, R = 12, T = 12, B = 26;
   const iw = W - L - R, ih = H - T - B;
   const needPerDay = s.worth.perDayNeeded;
-  const max = Math.max(needPerDay * 1.25, ...data, 0.01);
-  const today = new Date().getDate() - 1;
+  const max = Math.max(needPerDay * 1.25, ...data.map(x => x.cost), 0.01);
+  const now = Date.now();
+  const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+  let todayIdx = data.findIndex(x => x.d === midnight.getTime());
+  if (todayIdx < 0) { const f = data.findIndex(x => x.d > now); todayIdx = f < 0 ? data.length - 1 : f - 1; }
   const y = v => T + ih - (v / max) * ih;
-  const bw = iw / data.length;
+  const bw = iw / Math.max(1, data.length);
 
   for (let i = 0; i <= 4; i++) {
     const v = (max / 4) * i, yy = y(v);
@@ -591,21 +595,22 @@ function drawDaily(s) {
     t.textContent = money1(v);
   }
 
-  data.forEach((v, i) => {
+  data.forEach((x, i) => {
+    const v = x.cost;
     const h = v > 0 ? Math.max(2, (v / max) * ih) : 0;
-    const x = L + i * bw;
-    const isToday = i === today;
+    const xx = L + i * bw;
+    const isToday = i === todayIdx, future = x.d > now;
     const r = svg('rect', {
-      x: x + bw * .16, y: T + ih - h, width: bw * .68, height: h,
-      fill: isToday ? 'var(--s2)' : 'var(--s1)', opacity: i > today ? .18 : 1, rx: 2
+      x: xx + bw * .16, y: T + ih - h, width: bw * .68, height: h,
+      fill: isToday ? 'var(--s2)' : 'var(--s1)', opacity: future ? .18 : 1, rx: 2
     }, el);
-    const d = new Date(new Date().getFullYear(), new Date().getMonth(), i + 1);
+    const d = new Date(x.d);
     r.addEventListener('mouseenter', e => showTip(e,
-      `<b>${money(v)}</b><br><span style="color:var(--muted)">${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}${isToday ? ' · today' : ''}</span>`));
+      `<b>${money(v)}</b><br><span style="color:var(--muted)">${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}${isToday ? ' \u00b7 today' : ''}${x.requests ? ` \u00b7 ${x.requests.toLocaleString()} responses` : ''}</span>`));
     r.addEventListener('mouseleave', hideTip);
     if (i % 2 === 0 || data.length <= 16) {
-      const t = svg('text', { x: x + bw / 2, y: H - 8, 'text-anchor': 'middle', class: 'axlab' }, el);
-      t.textContent = i + 1;
+      const t = svg('text', { x: xx + bw / 2, y: H - 8, 'text-anchor': 'middle', class: 'axlab' }, el);
+      t.textContent = d.getDate();
     }
   });
 
@@ -618,8 +623,9 @@ function drawDaily(s) {
   const lab = svg('text', { x: W - R - 4, y: py - 6, 'text-anchor': 'end', class: 'axlab', fill: 'var(--ink-2)' }, el);
   lab.textContent = MODE === 'actual' ? `the fee: ${usdC(needPerDay * (RATE || 1))}/day` : `break even ${usdC(needPerDay)}/day`;
 
-  const over = data.filter(v => v >= needPerDay).length;
-  $('#dailyTag').textContent = `${over} of ${today + 1} days beat the break-even pace`;
+  const past = data.filter(x => x.d <= now);
+  const over = past.filter(x => x.cost >= needPerDay).length;
+  $('#dailyTag').textContent = `${over} of ${past.length} days beat the break-even pace`;
 }
 
 // ================================================================ sessions ==

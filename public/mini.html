@@ -48,6 +48,12 @@ body:hover #ctl,#ctl:focus-within{opacity:1}
 #pick button[aria-pressed="true"]{background:#4a94ee;border-color:#4a94ee;color:#fff;font-weight:600}
 #pick .close{position:absolute;top:6px;right:6px;min-width:0;padding:3px 7px}
 
+/* Cluster: several faces in a grid, one skin, each tile its own reading. */
+#stage.cluster{display:grid;gap:5px;padding:5px;background:#0d0d0d}
+#stage.cluster .tile{min-width:0;min-height:0;border-radius:8px}
+#stage.cluster .tile:hover{outline:1px solid rgba(255,255,255,.2);outline-offset:-1px}
+#pick .hint{font-size:10px;color:#6f6d66;margin-top:-2px}
+
 #stale{position:absolute;left:0;right:0;bottom:0;height:2px;background:#e04a4a;opacity:0;
        transition:opacity .3s;z-index:7}
 #stale.on{opacity:.85}
@@ -67,9 +73,15 @@ body:hover #ctl,#ctl:focus-within{opacity:1}
 
 <div id="pick">
   <button class="close" id="pClose">&#10005;</button>
+  <h4>Layout</h4>
+  <div class="grid" id="pLayout">
+    <button data-layout="single"  title="One reading at a time; click the face to cycle">Single</button>
+    <button data-layout="cluster" title="Several readings side by side, like an instrument cluster">Cluster</button>
+  </div>
   <h4>Gauge face</h4>
   <div class="grid" id="pSkins"></div>
-  <h4>Reading</h4>
+  <h4 id="pReadHead">Reading</h4>
+  <div class="hint" id="pReadHint"></div>
   <div class="grid" id="pMetrics"></div>
 </div>
 
@@ -202,9 +214,11 @@ const limText = (d, w) => {
 
 let metric = 'rate';
 let skin = 'dial';
+let layout = 'single';                                   // 'single' | 'cluster'
+let cluster = ['rate', 'today', 'fivehour', 'week'];     // readings shown in cluster layout
 
-function reading(d) {
-  const M = METRICS.find(x => x.id === metric) || METRICS[0];
+function reading(d, id) {
+  const M = METRICS.find(x => x.id === (id || metric)) || METRICS[0];
   const frac = Math.max(0, Math.min(1, M.frac(d) || 0));
   let sub = M.sub(d);
   // In 'deal' the big number is what you pay; say what it would have been.
@@ -561,15 +575,37 @@ function render(d) {
   if (!d) return;
   LAST = d;
   MODE = d.mode || 'retail';
-  RATE = d.rate == null ? null : d.rate;
-  const m = reading(d);
+  RATE = d.xrate == null ? null : d.xrate;      // exchange rate; d.rate is the needle
   const S = SKINS.find(x => x.id === skin) || SKINS[0];
-  let body;
-  try { body = S.render(d, m); }
-  catch (err) { body = `<rect width="320" height="160" fill="#111"/><text x="160" y="84"
-    text-anchor="middle" font-family="${SANS}" font-size="12" fill="#e04a4a">face failed: ${esc(S.name)}</text>`; }
-  $('#stage').innerHTML = `<svg ${VB} xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
-  $('#stage').title = `${S.name} - ${m.label}\nClick to change the reading, the circle button for the face.`;
+  const draw = m => {
+    try { return S.render(d, m); }
+    catch (err) {
+      return `<rect width="320" height="160" fill="#111"/><text x="160" y="84" text-anchor="middle"
+        font-family="${SANS}" font-size="12" fill="#e04a4a">face failed: ${esc(S.name)}</text>`;
+    }
+  };
+  const stage = $('#stage');
+
+  if (layout === 'cluster' && cluster.length >= 2) {
+    // An instrument cluster: the same face repeated, one reading per tile.
+    const n = cluster.length;
+    const cols = n <= 4 ? 2 : n <= 6 ? 3 : 4;
+    stage.className = 'cluster';
+    stage.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    stage.innerHTML = cluster.map((id, i) => {
+      const M = METRICS.find(x => x.id === id);
+      return `<div class="tile" data-i="${i}" title="${esc(M ? M.name : id)} - click to change this tile">
+        <svg ${VB} xmlns="http://www.w3.org/2000/svg">${draw(reading(d, id))}</svg></div>`;
+    }).join('');
+    stage.title = `${S.name} cluster, ${n} readings. Click a tile to change it.`;
+  } else {
+    const m = reading(d);
+    stage.className = '';
+    stage.style.gridTemplateColumns = '';
+    stage.innerHTML = `<svg ${VB} xmlns="http://www.w3.org/2000/svg">${draw(m)}</svg>`;
+    stage.title = `${S.name} - ${m.label}\nClick to change the reading, the circle button for the face.`;
+  }
+
   $('#stale').classList.toggle('on', !!d.stale && d.fiveHourPct != null);
   if (typeof d.onTop === 'boolean' && d.onTop !== pinned) {
     pinned = d.onTop;
@@ -579,17 +615,38 @@ function render(d) {
 
 /* ================================================================ picker = */
 function buildPicker() {
+  $$('#pLayout button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.layout === layout)));
   $('#pSkins').innerHTML = SKINS.map(s =>
     `<button data-skin="${s.id}" title="${esc(s.note)}" aria-pressed="${s.id === skin}">${esc(s.name)}</button>`).join('');
+  const isCluster = layout === 'cluster';
+  $('#pReadHead').textContent = isCluster ? 'Cluster readings' : 'Reading';
+  $('#pReadHint').textContent = isCluster
+    ? `${cluster.length} of 8 - click to add or remove; order is the order you add them`
+    : '';
   $('#pMetrics').innerHTML = METRICS.map(x =>
-    `<button data-metric="${x.id}" aria-pressed="${x.id === metric}">${esc(x.name)}</button>`).join('');
+    `<button data-metric="${x.id}" aria-pressed="${isCluster ? cluster.includes(x.id) : x.id === metric}">${esc(x.name)}</button>`).join('');
 }
+const $$ = sel => [...document.querySelectorAll(sel)];
 $('#pSkins').onclick = e => {
   const b = e.target.closest('[data-skin]'); if (b) setSkin(b.dataset.skin);
 };
 $('#pMetrics').onclick = e => {
-  const b = e.target.closest('[data-metric]'); if (b) setMetric(b.dataset.metric);
+  const b = e.target.closest('[data-metric]'); if (!b) return;
+  if (layout !== 'cluster') return setMetric(b.dataset.metric);
+  // Cluster: toggle membership, keep between 2 and 8 tiles.
+  const id = b.dataset.metric, i = cluster.indexOf(id);
+  if (i >= 0) { if (cluster.length > 2) cluster.splice(i, 1); }
+  else if (cluster.length < 8) cluster.push(id);
+  save({ miniCluster: cluster }); buildPicker(); render(LAST);
 };
+$('#pLayout').onclick = e => {
+  const b = e.target.closest('[data-layout]'); if (b) setLayout(b.dataset.layout);
+};
+function setLayout(id) {
+  if (id === layout) return;
+  layout = id; save({ miniLayout: id }); buildPicker(); render(LAST);
+  sizeIdx = null; resizeStep(0);          // jump to a sensible size for the new layout
+}
 function setSkin(id)   { skin = id;   save({ miniSkin: id });   buildPicker(); render(LAST); }
 function setMetric(id) { metric = id; save({ miniMetric: id }); buildPicker(); render(LAST); }
 function cycleSkin(step) {
@@ -602,27 +659,41 @@ function cycleMetric() {
 }
 $('#bSkin').onclick  = () => { buildPicker(); $('#pick').classList.toggle('open'); };
 $('#pClose').onclick = () => $('#pick').classList.remove('open');
-$('#stage').onclick  = cycleMetric;     // fastest control there is
+$('#stage').onclick = e => {                 // fastest control there is
+  const tile = e.target.closest('.tile');
+  if (layout === 'cluster' && tile) {
+    const i = Number(tile.dataset.i);
+    const cur = METRICS.findIndex(x => x.id === cluster[i]);
+    cluster[i] = METRICS[(cur + 1) % METRICS.length].id;
+    save({ miniCluster: cluster }); buildPicker(); render(LAST);
+    return;
+  }
+  cycleMetric();
+};
 addEventListener('keydown', e => {
   if (e.key === ']') cycleSkin(1);
   else if (e.key === '[') cycleSkin(-1);
   else if (e.key === 'm') cycleMetric();
+  else if (e.key === 'l') setLayout(layout === 'cluster' ? 'single' : 'cluster');
   else if (e.key === 'Escape') $('#pick').classList.remove('open');
 });
 
 /* ================================================================ window = */
-const STEPS = [[240, 160], [300, 190], [380, 230], [470, 275], [580, 330]];
+const STEPS_SINGLE  = [[240, 160], [300, 190], [380, 230], [470, 275], [580, 330]];
+const STEPS_CLUSTER = [[480, 300], [620, 380], [780, 470], [940, 560]];
+const STEPS = () => layout === 'cluster' ? STEPS_CLUSTER : STEPS_SINGLE;
 let sizeIdx = null;
 function nearestStep() {
   let best = 0, bd = Infinity;
-  STEPS.forEach(([w], i) => { const dd = Math.abs(w - window.outerWidth); if (dd < bd) { bd = dd; best = i; } });
+  STEPS().forEach(([w], i) => { const dd = Math.abs(w - window.outerWidth); if (dd < bd) { bd = dd; best = i; } });
   return best;
 }
 function resizeStep(delta) {
+  const table = STEPS();
   const base = sizeIdx == null ? nearestStep() : sizeIdx;
-  const i = Math.min(STEPS.length - 1, Math.max(0, base + delta));
+  const i = Math.min(table.length - 1, Math.max(0, base + delta));
   sizeIdx = i;
-  const [w, h] = STEPS[i];
+  const [w, h] = table[i];
   try { window.resizeTo(w, h); } catch {}
   // Chromium refuses resizeTo in some window types. Check whether it took, and
   // if not, have the server resize the real OS window instead.
@@ -679,6 +750,11 @@ function connect() {
       gotPrefs = true;
       if (d.skin && SKINS.some(s => s.id === d.skin)) skin = d.skin;
       if (d.metric && METRICS.some(x => x.id === d.metric)) metric = d.metric;
+      if (d.layout === 'cluster' || d.layout === 'single') layout = d.layout;
+      if (Array.isArray(d.cluster)) {
+        const ok = d.cluster.filter(id => METRICS.some(x => x.id === id));
+        if (ok.length >= 2) cluster = ok.slice(0, 8);
+      }
       buildPicker();
     }
     render(d);

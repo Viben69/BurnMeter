@@ -110,12 +110,27 @@ small PowerShell helper (`desktop/window.ps1`) the page calls through the server
 | ◉ | picks the gauge face and the reading |
 | ⤢ | opens the full dashboard |
 
-Click the face itself to cycle the reading; `[` and `]` cycle the face. The
-controls stay hidden until you hover. Double-click anywhere opens the dashboard.
+Click the face itself to cycle the reading; `[` and `]` cycle the face, `l`
+flips the layout. The controls stay hidden until you hover. Double-click
+anywhere opens the dashboard.
+
+### Single or cluster
+
+Two layouts, under **Layout** in the picker:
+
+* **Single** — one reading, one face. Click the face to cycle through readings.
+* **Cluster** — several readings at once in a grid, like an instrument cluster.
+  One face style for all tiles; each tile is its own reading. Click a tile to
+  change just that tile, or tick readings on and off in the picker (2 to 8).
+  The window steps through larger sizes to suit.
+
+The default cluster is burn rate, today, 5-hour and weekly. Whatever you set is
+remembered, and the gauge opens at a size that fits the layout.
 
 ### Faces
 
-Eleven of them. Whatever you pick is remembered.
+Eleven of them. Whatever you pick is remembered, and in a cluster the same face
+is used for every tile.
 
 | Face | |
 |---|---|

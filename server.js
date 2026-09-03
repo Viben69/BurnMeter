@@ -61,6 +61,10 @@ const DEFAULT_CONFIG = {
   miniMetric: 'rate',
   miniSkin: 'dial',
   miniOnTop: false,
+  // 'single' shows one reading and cycles; 'cluster' shows several at once,
+  // like an instrument cluster. miniCluster is the ordered list of readings.
+  miniLayout: 'single',
+  miniCluster: ['rate', 'today', 'fivehour', 'week'],
   // Which lens every dollar figure is shown through:
   //   retail - what this usage would cost on pay-as-you-go API rates
   //   actual - your real share of the flat fee, allocated by usage
@@ -515,7 +519,23 @@ function scan(initial = false) {
 const num = v => (typeof v === 'number' && isFinite(v) ? v : null);
 
 /** Real 5-hour / weekly consumption, written by the statusline hook. */
+let limitsCache = { mtime: -1, at: 0, value: null };
 function readLimits() {
+  const now = Date.now();
+  // Re-stat at most every 2s; re-parse only when the file actually changed.
+  if (now - limitsCache.at < 2000 && limitsCache.value) return withStale(limitsCache.value);
+  limitsCache.at = now;
+  let st;
+  try { st = fs.statSync(LIMITS_F); } catch { limitsCache.value = NO_LIMITS; return NO_LIMITS; }
+  if (st.mtimeMs === limitsCache.mtime && limitsCache.value) return withStale(limitsCache.value);
+  limitsCache.mtime = st.mtimeMs;
+  limitsCache.value = parseLimits();
+  return withStale(limitsCache.value);
+}
+const NO_LIMITS = { fiveHourPct: null, weekPct: null, updatedAt: 0, stale: true };
+const withStale = v => v === NO_LIMITS ? v
+  : Object.assign({}, v, { stale: (Date.now() / 1000 - (v.updatedAt || 0)) > 900 });
+function parseLimits() {
   try {
     const j = JSON.parse(fs.readFileSync(LIMITS_F, 'utf8'));
     return {
@@ -527,11 +547,10 @@ function readLimits() {
       model:         j.model || null,
       contextPct:    num(j.context_pct),
       sessionCost:   num(j.session_cost),
-      sessionId:     j.session_id || null,
-      stale:         (Date.now() / 1000 - (num(j.updated_at) || 0)) > 900
+      sessionId:     j.session_id || null
     };
   } catch {
-    return { fiveHourPct: null, weekPct: null, updatedAt: 0, stale: true };
+    return NO_LIMITS;
   }
 }
 
@@ -617,15 +636,23 @@ function sparkline(hours = 24, buckets = 48) {
   return out;
 }
 
-/** Daily totals for the current calendar month. */
-function dailyThisMonth() {
-  const from = startOfMonth();
-  const days = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-  const out = new Array(days).fill(0);
+/**
+ * Daily totals across the billing period, oldest first. Days not yet reached
+ * are listed with cost 0 so the chart always shows the whole period.
+ */
+function dailyThisPeriod(pStart, pEnd) {
+  const day0 = startOfDay(new Date(pStart));
+  const days = Math.round((pEnd - pStart) / 864e5);
+  const out = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(day0); d.setDate(d.getDate() + i);           // DST-safe
+    out.push({ d: d.getTime(), cost: 0, requests: 0 });
+  }
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i];
-    if (e.t < from) break;
-    out[new Date(e.t).getDate() - 1] += e.c;
+    if (e.t < pStart) break;
+    const idx = Math.round((startOfDay(new Date(e.t)) - day0) / 864e5);
+    if (idx >= 0 && idx < days) { out[idx].cost += e.c; out[idx].requests++; }
   }
   return out;
 }
@@ -949,7 +976,6 @@ function buildState() {
   const rate1h   = sumRange(now - 36e5).cost;
 
   // --- windows --------------------------------------------------------------
-  const month  = sumRange(startOfMonth());
   const today  = sumRange(startOfDay());
   const week7  = sumRange(now - 7 * 864e5);
   const hour24 = sumRange(now - 864e5);
@@ -1086,9 +1112,9 @@ function buildState() {
     activeCount: active.length,
     activeCost: active.reduce((n, a) => n + a.windowCost, 0),
     spark:  sparkline(24, 48),
-    daily:  dailyThisMonth(),
-    byModel:   breakdown(startOfMonth(), 'm'),
-    byProject: breakdown(startOfMonth(), 'p'),
+    daily:  dailyThisPeriod(pStart, pEnd),
+    byModel:   breakdown(pStart, 'm'),
+    byProject: breakdown(pStart, 'p'),
     recent: events.slice(-14).reverse().map(e => ({
       t: e.t, c: e.c, m: e.m, p: e.p, sub: e.sub,
       in: e.i, out: e.o, read: e.r, write: e.w, think: e.k
@@ -1135,7 +1161,10 @@ function buildMini() {
     spark,
     multiple: month.cost / fee,
     fee,
-    rate: retail30m > 0.01 ? fee / retail30m : null,     // actual $ per retail $
+    // Exchange rate, actual $ per retail $. Named to never collide with the
+    // burn rate above - a duplicate `rate` key here silently replaced the
+    // needle's reading with 0.03 for a whole release.
+    xrate: retail30m > 0.01 ? fee / retail30m : null,
     mode: CONFIG.pricingMode || 'retail',
     periodFraction: Math.min(1, (now - periodStart()) / (periodEnd() - periodStart())),
     planName: CONFIG.planName,
@@ -1158,6 +1187,8 @@ function buildMini() {
     scale: CONFIG.miniScale,
     metric: CONFIG.miniMetric,
     skin: CONFIG.miniSkin,
+    layout: CONFIG.miniLayout || 'single',
+    cluster: CONFIG.miniCluster || ['rate', 'today', 'fivehour', 'week'],
     onTop: !!CONFIG.miniOnTop
   };
 }
@@ -1299,6 +1330,11 @@ const server = http.createServer(async (req, res) => {
     if (isFinite(Number(j.miniScale))) CONFIG.miniScale = Math.min(2.5, Math.max(0.6, Number(j.miniScale)));
     if (typeof j.miniMetric === 'string') CONFIG.miniMetric = j.miniMetric.slice(0, 20);
     if (typeof j.miniSkin === 'string') CONFIG.miniSkin = j.miniSkin.slice(0, 20);
+    if (j.miniLayout === 'single' || j.miniLayout === 'cluster') CONFIG.miniLayout = j.miniLayout;
+    if (Array.isArray(j.miniCluster)) {
+      const ids = j.miniCluster.filter(x => typeof x === 'string' && x.length <= 20).slice(0, 8);
+      if (ids.length >= 2) CONFIG.miniCluster = ids;
+    }
     if (['retail', 'actual', 'deal'].includes(j.pricingMode)) CONFIG.pricingMode = j.pricingMode;
     if (isFinite(Number(j.renewalDay))) CONFIG.renewalDay = Math.min(28, Math.max(1, Math.round(Number(j.renewalDay))));
     if (typeof j.miniOnTop === 'boolean') CONFIG.miniOnTop = j.miniOnTop;
@@ -1437,7 +1473,8 @@ function winHelper(extraArgs) {
 function openWindow(which, opts = {}) {
   const base = `http://${CONFIG.host}:${CONFIG.port}`;
   const url  = which === 'mini' ? `${base}/mini` : base;
-  const size = which === 'mini' ? (opts.size || '380,230') : (opts.size || '1380,940');
+  const miniDefault = (CONFIG.miniLayout === 'cluster') ? '620,380' : '380,230';
+  const size = which === 'mini' ? (opts.size || miniDefault) : (opts.size || '1380,940');
 
   if (process.platform === 'win32') {
     const exe = findBrowser();
@@ -1497,7 +1534,32 @@ function boot() {
     console.log(`[burnmeter] all-time API value $${all.cost.toFixed(2)} · this month $${month.cost.toFixed(2)} of $${CONFIG.monthlyUsd}`);
   }
 
-  setInterval(() => { if (scan()) pushState(); }, CONFIG.pollMs);
+  // Stat-ing every transcript every 1.2s costs ~3% of a core for nothing while
+  // idle, and the tree only grows. Watch it instead: rescan when something
+  // changes (coalesced, at most ~1.4/s), with a slow safety poll. If recursive
+  // watching is unavailable on this platform, fall back to the old poll.
+  let scanTimer = null, lastScanAt = 0;
+  const requestScan = () => {
+    if (scanTimer) return;
+    const wait = Math.max(0, 700 - (Date.now() - lastScanAt));
+    scanTimer = setTimeout(() => {
+      scanTimer = null; lastScanAt = Date.now();
+      if (scan()) pushState();
+    }, wait);
+  };
+  let watching = false;
+  try {
+    const w = fs.watch(PROJECTS, { recursive: true, persistent: false }, () => requestScan());
+    w.on('error', e => {
+      console.log('[burnmeter] transcript watcher failed (' + e.message + '); polling instead');
+      try { w.close(); } catch {}
+      setInterval(() => { if (scan()) pushState(); }, CONFIG.pollMs);
+    });
+    watching = true;
+  } catch (e) {
+    console.log('[burnmeter] fs.watch unavailable (' + e.message + '); polling instead');
+  }
+  setInterval(() => { if (scan()) pushState(); }, watching ? 5000 : CONFIG.pollMs);
 
   // Leave a crumb the statusline can read without talking to the server.
   const writeWorthCache = () => {

@@ -1,8 +1,11 @@
 {
-  "_comment": "USD per 1,000,000 tokens. in=input, out=output, w5m=5-minute cache write, w1h=1-hour cache write, read=cache read. Cache multipliers off base input: w5m=1.25x, w1h=2x, read=0.1x. Verified against the Claude API pricing table on 2026-08-23. Matching is exact-id first, then longest-substring, then family. Server reloads this file whenever it changes.",
-  "_note_sonnet5": "Sonnet 5 is at introductory pricing ($2/$10) through 2026-08-31; it reverts to $3/$15 on 2026-09-01. Update the claude-sonnet-5 row then.",
+  "_comment": "USD per 1,000,000 tokens. in=input, out=output, w5m=5-minute cache write, w1h=1-hour cache write, read=cache read. Cache multipliers off base input: w5m=1.25x, w1h=2x, read=0.1x. Verified against platform.claude.com/docs/en/about-claude/pricing on 2026-09-03. Matching is exact-id first, then longest-substring, then family. Server reloads this file whenever it changes.",
+  "_note_sonnet5": "Sonnet 5's $2/$10 launch price was made permanent; the increase scheduled for 2026-09-01 did not happen.",
+  "_note_fable51": "Fable 5.1 and Mythos 5.1 charge cache reads at 0.025x base input ($0.25/MTok), not the usual 0.1x. They need their own rows or substring matching prices them as Fable 5.",
 
   "models": {
+    "claude-fable-5-1":  { "in": 10.00, "out": 50.00, "w5m": 12.50, "w1h": 20.00, "read": 0.25 },
+    "claude-mythos-5-1": { "in": 10.00, "out": 50.00, "w5m": 12.50, "w1h": 20.00, "read": 0.25 },
     "claude-fable-5":    { "in": 10.00, "out": 50.00, "w5m": 12.50, "w1h": 20.00, "read": 1.00 },
     "claude-mythos-5":   { "in": 10.00, "out": 50.00, "w5m": 12.50, "w1h": 20.00, "read": 1.00 },
 
