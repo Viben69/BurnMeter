@@ -29,6 +29,10 @@ h1{
 @keyframes pop{from{opacity:0;transform:scale(.7) translateY(14px)}to{opacity:1;transform:none}}
 
 #dancer{width:clamp(150px,36vh,250px);height:auto;margin:4px 0 0;overflow:visible}
+/* A dropped-in image gets the same bounce, and is never distorted. */
+#yours{max-width:min(78vw,520px);max-height:56vh;width:auto;height:auto;margin:6px 0 0;
+       border-radius:12px;box-shadow:0 14px 44px rgba(0,0,0,.55);
+       animation:beat .48s ease-in-out infinite}
 
 /* Each part swings on its own pivot; the whole figure bounces on the beat.
    0.48s a cycle is 125bpm, which is about right for a celebration. */
@@ -259,6 +263,17 @@ h1{
 'use strict';
 const $ = s => document.querySelector(s);
 const qs = new URLSearchParams(location.search);
+
+/* Anything in party-media wins over the drawn figure - it is your window. */
+const mine = qs.get('img');
+if (mine) {
+  const img = new Image();
+  img.id = 'yours';
+  img.alt = '';
+  img.src = '/party-media/' + encodeURIComponent(mine);
+  img.onload = () => { const d = $('#dancer'); if (d) d.replaceWith(img); };
+  img.onerror = () => {};                    // keep the drawn one if it will not load
+}
 
 $('#title').textContent = (qs.get('title') || 'CAPACITY IS BACK').toUpperCase().slice(0, 40);
 $('#sub').innerHTML = (qs.get('sub') || 'go go go')

@@ -351,6 +351,9 @@ async function loadLimits() {
   if (document.activeElement !== $('#lAlert')) $('#lAlert').checked = !!a.alertOnReset;
   if (document.activeElement !== $('#lSound')) $('#lSound').checked = !!a.alertSound;
   if (document.activeElement !== $('#lParty')) $('#lParty').checked = !!a.partyOnReset;
+  mediaInfo = { dir: a.mediaDir || '', media: a.media || [] };
+  $('#lMedia').textContent = mediaInfo.media.length
+    ? `Party image (${mediaInfo.media.length})` : 'Party image…';
 
   // --- current state ---
   const st = d.state;
@@ -1103,6 +1106,19 @@ const saveAlerts = () => fetch('/api/alerts', {
 $('#lAlert').onchange = saveAlerts;
 $('#lSound').onchange = saveAlerts;
 $('#lParty').onchange = saveAlerts;
+
+let mediaInfo = { dir: '', media: [] };
+$('#lMedia').onclick = () => {
+  const n = mediaInfo.media.length;
+  alert(
+    'Drop any image or GIF in this folder and the party uses it instead of the '
+    + 'drawn figure:\n\n' + mediaInfo.dir + '\n\n'
+    + (n ? `${n} file(s) in there now: ${mediaInfo.media.slice(0, 6).join(', ')}`
+         + (n > 1 ? '\n\nWith more than one, it picks at random each time.' : '')
+       : 'Nothing in there yet, so the drawn figure is being used.')
+    + '\n\nAnimated GIFs work. Nothing in that folder is ever committed or uploaded.'
+  );
+};
 
 selectTab((location.hash || '#overview').slice(1) || 'overview');
 connect();

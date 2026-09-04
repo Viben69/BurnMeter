@@ -35,6 +35,9 @@ const CONFIG_F   = path.join(APP_DIR, 'config.json');
 const PRICING_F  = path.join(APP_DIR, 'pricing.json');
 const PUBLIC_D   = path.join(APP_DIR, 'public');
 const DESKTOP_D  = path.join(APP_DIR, 'desktop');
+// Drop any image or GIF in here and the party uses it instead of the drawn
+// figure. Yours, not shipped, and never committed - see .gitignore.
+const PARTY_D    = path.join(APP_DIR, 'party-media');
 // statusline.js drops the real subscription rate-limit numbers here.
 const LIMITS_F   = path.join(APP_DIR, 'limits.json');
 
@@ -1388,8 +1391,11 @@ function throwParty(title, body) {
   if (now < partyUntil) return;                       // one is already running
   const secs = Math.min(120, Math.max(3, Number(CONFIG.partySeconds) || 15));
   partyUntil = now + (secs + 4) * 1000;
+  const media = partyMedia();
+  const pick = media.length ? media[(Math.random() * media.length) | 0] : null;
   const q = `?title=${encodeURIComponent(title)}&sub=${encodeURIComponent(body)}` +
-            `&secs=${secs}&sound=${CONFIG.alertSound ? 1 : 0}`;
+            `&secs=${secs}&sound=${CONFIG.alertSound ? 1 : 0}` +
+            (pick ? `&img=${encodeURIComponent(pick)}` : '');
   openWindow('party', { query: q });
   setTimeout(() => winClose('party'), (secs + 3) * 1000);   // belt and braces
 }
@@ -1513,7 +1519,9 @@ function pushState() {
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
                '.css': 'text/css; charset=utf-8', '.json': 'application/json',
-               '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.png': 'image/png' };
+               '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.png': 'image/png',
+               '.gif': 'image/gif', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+               '.webp': 'image/webp', '.avif': 'image/avif' };
 
 function json(res, obj, code = 200) {
   res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -1752,6 +1760,7 @@ const server = http.createServer(async (req, res) => {
     }
     return json(res, { alertOnReset: CONFIG.alertOnReset, alertSound: CONFIG.alertSound,
                        partyOnReset: CONFIG.partyOnReset, partySeconds: CONFIG.partySeconds,
+                       mediaDir: PARTY_D, media: partyMedia(),
                        recent: alertLog.slice(-15).reverse() });
   }
 
@@ -1760,6 +1769,23 @@ const server = http.createServer(async (req, res) => {
   }
 
   // static
+  // Party media: matched against the actual directory listing rather than
+  // resolved as a path, so nothing outside the folder is reachable however
+  // the name is spelled.
+  if (url.pathname.startsWith('/party-media/')) {
+    const want = decodeURIComponent(url.pathname.slice('/party-media/'.length));
+    const hit = partyMedia().find(f => f === want);
+    if (!hit) { res.writeHead(404); return res.end('not found'); }
+    return fs.readFile(path.join(PARTY_D, hit), (err, data) => {
+      if (err) { res.writeHead(404); return res.end('not found'); }
+      res.writeHead(200, {
+        'content-type': MIME[path.extname(hit).toLowerCase()] || 'application/octet-stream',
+        'cache-control': 'no-store'
+      });
+      res.end(data);
+    });
+  }
+
   let rel = url.pathname === '/' ? '/index.html' : url.pathname;
   if (rel === '/mini') rel = '/mini.html';
   if (rel === '/party') rel = '/party.html';
@@ -1802,6 +1828,17 @@ function winHelper(extraArgs) {
 }
 
 const WINDOW_TITLE = { mini: 'BurnMeter Gauge', main: 'BurnMeter', party: 'BurnMeter Party' };
+
+const PARTY_EXT = new Set(['.gif', '.png', '.jpg', '.jpeg', '.webp', '.avif', '.svg']);
+
+/** Whatever the user has dropped in party-media, newest first. */
+function partyMedia() {
+  try {
+    return fs.readdirSync(PARTY_D)
+      .filter(f => PARTY_EXT.has(path.extname(f).toLowerCase()))
+      .filter(f => { try { return fs.statSync(path.join(PARTY_D, f)).isFile(); } catch { return false; } });
+  } catch { return []; }
+}
 
 /** Bring an already-open window to the front. Resolves false if there isn't one. */
 function raiseWindow(which) {
@@ -1882,6 +1919,7 @@ function openWindow(which, opts = {}) {
 // ----------------------------------------------------------------- boot ----
 
 function boot() {
+  try { fs.mkdirSync(PARTY_D, { recursive: true }); } catch {}
   loadPricing();
   const t0 = Date.now();
   process.stdout.write('[burnmeter] reading transcripts... ');

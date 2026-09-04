@@ -314,6 +314,18 @@ itself — **stay open** holds it if you want.
 
 Only for good news. Getting blocked gets a toast and nothing else.
 
+**Use your own image.** Drop any image or GIF into:
+
+```
+~/.claude/burnmeter/party-media/
+```
+
+and the party shows that instead of the drawn figure — animated GIFs included.
+More than one file and it picks at random each time. The **Party image…**
+button in the Limits tab opens the folder path and says what's in it. Nothing
+in that folder is committed, uploaded, or read by anything but your own
+browser; it is gitignored.
+
 Everything in it is generated: the confetti is a canvas particle system, the
 sound is synthesised through Web Audio (a noise burst through a bandpass for
 the pop, a sawtooth glissando for the horn, sawtooth-plus-vibrato for the
