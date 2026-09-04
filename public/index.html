@@ -49,9 +49,11 @@
     <button role="tab" data-tab="overview"  aria-selected="true">Overview</button>
     <button role="tab" data-tab="sessions"  aria-selected="false">Sessions</button>
     <button role="tab" data-tab="breakdown" aria-selected="false">Breakdown</button>
+    <button role="tab" data-tab="limits"    aria-selected="false">Limits</button>
     <button role="tab" data-tab="live"      aria-selected="false">Live feed</button>
   </div>
 
+  <div id="blockbar" class="blockbar hidden"></div>
   <div id="updatebar" class="updatebar hidden"></div>
   <div id="warn" class="warnbar hidden"></div>
 
@@ -206,6 +208,53 @@
     <div class="card" style="margin-top:13px">
       <h2>When you burn <span class="tag">value by hour of day</span></h2>
       <div class="chartbox chartscroll"><svg id="bHours" viewBox="0 0 940 190"></svg></div>
+    </div>
+  </section>
+
+  <!-- ================================================================== LIMITS -->
+  <section id="tab-limits" class="hidden">
+    <div class="toolbar">
+      <span style="color:var(--muted);font-size:12px">Window</span>
+      <select id="lDays">
+        <option value="30">Last 30 days</option>
+        <option value="90" selected>Last 90 days</option>
+        <option value="365">Last year</option>
+      </select>
+      <div class="spacer"></div>
+      <label class="pill" style="cursor:pointer"><input type="checkbox" id="lAlert" style="width:auto;margin-right:6px">alert me when a limit lifts</label>
+      <label class="pill" style="cursor:pointer"><input type="checkbox" id="lSound" style="width:auto;margin-right:6px">sound</label>
+      <button class="icon" id="lTest">Test alert</button>
+    </div>
+
+    <div class="card" id="lStateCard">
+      <h2>Right now <span class="tag" id="lStateTag"></span></h2>
+      <div id="lState"></div>
+    </div>
+
+    <div class="grid row-2" style="margin-top:13px">
+      <div class="card">
+        <h2>Time lost to lockouts</h2>
+        <div class="statline" id="lTotals" style="margin-top:0"></div>
+      </div>
+      <div class="card">
+        <h2>After a reset <span class="tag">the hour capacity comes back</span></h2>
+        <div class="statline" id="lAfter" style="margin-top:0"></div>
+        <div class="verdict" id="lAfterNote"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:13px">
+      <h2>Every lockout <span class="tag" id="lCount"></span></h2>
+      <div class="tablescroll">
+        <table id="lTable">
+          <thead><tr>
+            <th>When</th><th>Limit</th><th class="n">Refusals</th>
+            <th>Said it resets</th><th class="n">You were out</th><th>Outcome</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="lEmpty">No lockouts in this window — nothing has stopped you.</div>
     </div>
   </section>
 

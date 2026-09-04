@@ -270,6 +270,51 @@ mid-response) and **All windows** (their combined burn rate).
 
 ---
 
+## Limits and lockouts
+
+When a usage limit stops you, Claude Code writes the refusal into the
+transcript — and for session limits it names the reset time:
+
+```
+You've hit your session limit · resets 11:20am (America/Chicago)
+You've reached your Fable 5 limit. Run /usage-credits to continue...
+```
+
+Those records cost nothing and carry a synthetic model, so they are invisible
+to every spend figure. They are also the only local record that a limit exists
+at all. BurnMeter reads them, groups the retry bursts into one lockout each,
+and pairs every lockout with the first real response afterwards — the moment
+work actually resumed.
+
+The **Limits** tab is the ledger: every lockout, what it said, how long you
+were out, and whether capacity came back earlier than promised.
+
+### The alert
+
+The expensive part of a lockout is not being blocked. It is not noticing when
+the block lifts. BurnMeter fires a Windows toast — and brings the gauge to the
+front — at three moments, each at most once per lockout:
+
+| | |
+|---|---|
+| **Locked out** | you just hit a limit, and here is when it says it comes back |
+| **Limit should be clear** | the stated reset time has arrived |
+| **Capacity is back** | work resumed — and by how much it beat the stated time, if it did |
+
+Only transitions the running server actually watched are announced; restarting
+it never re-announces an old lockout. Turn the alert or its sound off in the
+Limits tab, and **Test alert** proves the plumbing without waiting for a limit.
+
+The gauge has a matching **Reset in** reading that counts down while blocked.
+
+### Is it worth catching?
+
+The tab answers that from your own history: what an hour just after a reset is
+worth against a typical hour. If the ratio is high, every minute between the
+reset and you noticing has a price on it, and the tab prints that price.
+
+---
+
 ## Sessions
 
 The **Sessions** tab is the "where did it actually go" view. Every session, with

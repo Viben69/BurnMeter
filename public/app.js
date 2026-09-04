@@ -308,6 +308,104 @@ function renderOverview(s) {
      back to ${new Date(s.dataFrom).toLocaleDateString()}. Prices from <code>pricing.json</code>.`;
 }
 
+/*
+ * The lockout banner. Sits above everything on every tab, because the one
+ * thing worth interrupting you for is "capacity is back".
+ */
+function renderBlockBar(s) {
+  const bar = $('#blockbar');
+  const b = s.block;
+  if (!b || !b.last) { bar.classList.add('hidden'); return; }
+  const now = s.now;
+
+  if (b.blocked) {
+    bar.classList.remove('hidden', 'clear');
+    const what = b.kind === 'model' ? `${esc(b.model)} limit` : `${esc(b.kind)} limit`;
+    const due = b.resetsInMs;
+    bar.innerHTML = due != null && due > 0
+      ? `<span>Locked out — <b>${what}</b>.</span>
+         <span class="big">${dur(due)}</span><span style="color:var(--ink-2)">until it says ${esc(b.resetText || '')}</span>`
+      : due != null
+        ? `<span><b>${what}</b> — the stated reset time has passed. Try again.</span>`
+        : `<span>Locked out — <b>${what}</b>. No reset time given.</span>`;
+    return;
+  }
+
+  // Just came back: say so briefly, and loudly if it was early.
+  const back = b.last.recoveredAt;
+  if (back && now - back < 20 * 60e3) {
+    bar.classList.remove('hidden');
+    bar.classList.add('clear');
+    bar.innerHTML = b.last.early
+      ? `<span><b>Capacity came back early</b> — ${dur(b.last.earlyByMs)} before it said. Extra room, use it.</span>`
+      : `<span><b>Capacity is back.</b> You were out for ${dur(b.last.waitedMs || 0)}.</span>`;
+    return;
+  }
+  bar.classList.add('hidden');
+}
+
+async function loadLimits() {
+  const days = $('#lDays').value;
+  const d = await (await fetch('/api/limits?days=' + days)).json();
+  const a = await (await fetch('/api/alerts')).json().catch(() => ({}));
+  if (document.activeElement !== $('#lAlert')) $('#lAlert').checked = !!a.alertOnReset;
+  if (document.activeElement !== $('#lSound')) $('#lSound').checked = !!a.alertSound;
+
+  // --- current state ---
+  const st = d.state;
+  $('#lStateTag').textContent = st.blocked ? 'locked out' : 'clear';
+  $('#lState').innerHTML = st.blocked
+    ? `<div class="bignum" style="color:var(--crit)">${st.resetsInMs > 0 ? dur(st.resetsInMs) : 'now'}</div>
+       <div class="sub2">until the ${esc(st.kind)} limit resets${st.resetText ? ' (' + esc(st.resetText) + ')' : ''}
+       · blocked since ${new Date(st.since).toLocaleTimeString()}</div>`
+    : st.last
+      ? `<div class="bignum" style="color:var(--good)">Clear</div>
+         <div class="sub2">last lockout ${ago(st.last.t)}${st.last.waitedMs ? ' · cost you ' + dur(st.last.waitedMs) : ''}</div>`
+      : `<div class="bignum" style="color:var(--good)">Clear</div><div class="sub2">no lockouts on record</div>`;
+
+  // --- totals ---
+  const t = d.totals;
+  const perWeek = t.count / Math.max(1, d.days / 7);
+  $('#lTotals').innerHTML = [
+    stat('Lockouts', t.count, `${perWeek.toFixed(1)} a week`),
+    stat('Time lost', dur(t.blockedMs), 'waiting for a reset'),
+    stat('Average wait', dur(t.avgWaitMs), 'per lockout'),
+    stat('Early resets', t.early, t.early ? 'came back sooner than stated' : 'none seen yet')
+  ].join('');
+
+  // --- what a reset is worth ---
+  const ar = t.afterResetPerHour, tp = t.typicalPerHour;
+  $('#lAfter').innerHTML = [
+    stat('First hour back', ar == null ? '—' : money(ar), 'value, hour after a reset'),
+    stat('A typical hour', money(tp), 'across the whole window'),
+    stat('Ratio', ar == null || !tp ? '—' : (ar / tp).toFixed(1) + '\u00d7', 'how hard you go once free')
+  ].join('');
+  $('#lAfterNote').innerHTML = ar == null || !tp ? ''
+    : ar > tp
+      ? `You work <b>${(ar / tp).toFixed(1)}\u00d7</b> harder in the hour after a reset than in an average hour.
+         Every minute between the reset and you noticing is worth about <b>${money(ar / 60)}</b>.`
+      : `The hour after a reset is no busier than any other — you are probably not catching them as they happen.`;
+
+  // --- history ---
+  const tb = $('#lTable tbody');
+  $('#lCount').textContent = `${d.lockouts.length} in the last ${d.days} days`;
+  $('#lEmpty').classList.toggle('hidden', d.lockouts.length > 0);
+  tb.innerHTML = d.lockouts.map(l => {
+    const outcome = l.early
+      ? `<span style="color:var(--good)">early by ${dur(l.earlyByMs)}</span>`
+      : !l.recoveredAt ? '<span style="color:var(--muted)">never resumed</span>'
+      : l.resetAt ? 'on time' : 'resumed';
+    return `<tr>
+      <td>${new Date(l.t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td>
+      <td>${l.kind === 'model' ? esc(l.model) : esc(l.kind)}</td>
+      <td class="n">${l.hits}</td>
+      <td>${l.resetText ? esc(l.resetText) : '<span style="color:var(--muted)">not stated</span>'}</td>
+      <td class="n">${l.waitedMs ? dur(l.waitedMs) : '—'}</td>
+      <td>${outcome}</td>
+    </tr>`;
+  }).join('');
+}
+
 /* Update banner. The server only ever checks; installing is a click. */
 function renderUpdate(s) {
   const bar = $('#updatebar');
@@ -902,11 +1000,12 @@ function renderFeed(s) {
 function selectTab(name) {
   ACTIVE = name;
   $$('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
-  for (const t of ['overview', 'sessions', 'breakdown', 'live'])
+  for (const t of ['overview', 'sessions', 'breakdown', 'limits', 'live'])
     $('#tab-' + t).classList.toggle('hidden', t !== name);
   location.hash = name;
   if (name === 'sessions')  loadSessions();
   if (name === 'breakdown') loadBreakdown();
+  if (name === 'limits')    loadLimits();
 }
 $$('.tabs button').forEach(b => b.onclick = () => selectTab(b.dataset.tab));
 
@@ -926,6 +1025,7 @@ function apply(s) {
   if (document.activeElement !== $('#planUsd'))  $('#planUsd').value  = s.plan.monthlyUsd;
   if (document.activeElement !== $('#planRenew') && s.period) $('#planRenew').value = s.period.renewalDay;
   if (s.exchange) RATE = s.exchange.rate;
+  renderBlockBar(s);
   if (ACTIVE === 'overview') renderOverview(s);
   if (ACTIVE === 'live')     renderFeed(s);
 }
@@ -985,7 +1085,21 @@ $('#bDays').onchange = () => loadBreakdown();
 setInterval(() => {
   if (ACTIVE === 'sessions')  loadSessions(true);
   if (ACTIVE === 'breakdown') loadBreakdown();
+  if (ACTIVE === 'limits')    loadLimits();
 }, 20000);
+$('#lDays').onchange = () => loadLimits();
+$('#lTest').onclick = async () => {
+  const b = $('#lTest'); b.disabled = true; b.textContent = 'Sent';
+  await fetch('/api/alerts', { method: 'POST', headers: { 'content-type': 'application/json' },
+                               body: JSON.stringify({ test: true }) }).catch(() => {});
+  setTimeout(() => { b.disabled = false; b.textContent = 'Test alert'; }, 1800);
+};
+const saveAlerts = () => fetch('/api/alerts', {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ alertOnReset: $('#lAlert').checked, alertSound: $('#lSound').checked })
+}).catch(() => {});
+$('#lAlert').onchange = saveAlerts;
+$('#lSound').onchange = saveAlerts;
 
 selectTab((location.hash || '#overview').slice(1) || 'overview');
 connect();

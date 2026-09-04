@@ -190,6 +190,15 @@ const METRICS = [
     sub: d => d.weekPct != null ? '7-day allowance'
       : (lim(d, 'week') && lim(d, 'week').real
           ? 'calibrated estimate' : 'estimate: vs your busiest week') },
+  { id: 'reset', name: 'Reset in', label: 'LOCKED OUT', unit: '',
+    val: d => !d.block || !d.block.blocked ? 'clear'
+      : (d.block.resetsInMs > 0 ? dur(d.block.resetsInMs) : 'now'),
+    raw: d => d.block && d.block.blocked ? Math.max(0, d.block.resetsInMs || 0) : 0,
+    frac: d => !d.block || !d.block.blocked ? 0
+      : Math.max(0, Math.min(1, 1 - (d.block.resetsInMs || 0) / (5 * 36e5))),
+    sub: d => !d.block || !d.block.blocked ? 'not blocked'
+      : d.block.resetsInMs > 0 ? `${d.block.kind} limit \u00b7 back at ${esc(d.block.resetText || '?')}`
+      : 'the stated reset has passed - try again' },
   { id: 'context', name: 'Context', label: 'CONTEXT WINDOW', unit: '%',
     val: d => d.contextPct == null ? '--' : String(Math.round(d.contextPct)),
     raw: d => d.contextPct || 0, frac: d => (d.contextPct || 0) / 100,

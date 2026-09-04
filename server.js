@@ -74,6 +74,10 @@ const DEFAULT_CONFIG = {
   // the page. Restored on the next open, so it reappears where you left it
   // instead of wherever the browser feels like putting it.
   miniRect: null,
+  // Shout when a usage limit lifts. The whole point of tracking lockouts is
+  // to not be sitting on your hands ten minutes after capacity came back.
+  alertOnReset: true,
+  alertSound: true,
   // 'single' shows one reading and cycles; 'cluster' shows several at once,
   // like an instrument cluster. miniCluster is the ordered list of readings.
   miniLayout: 'single',
@@ -246,6 +250,9 @@ const seen = new Set();
 const cursors = new Map();
 /** sessionId -> rich session record. */
 const sessions = new Map();
+/** Every time Claude Code refused because a usage limit was hit. */
+const limitHits = [];
+const limitSeen = new Set();
 
 let scanning = true;
 let lastScanMs = 0;
@@ -322,6 +329,99 @@ function textOf(content) {
   return bits.length ? bits.join(' ') : null;
 }
 
+// ---------------------------------------------------------------- limits ----
+
+/*
+ * When you hit a usage limit, Claude Code writes the refusal into the
+ * transcript as an assistant record with isApiErrorMessage and a synthetic
+ * model, so it costs nothing and is skipped by the pricing path. The text is
+ * the only place the limit is described - and for session limits it names the
+ * reset time, which is the single most useful fact in this whole app:
+ *
+ *   "You've hit your session limit · resets 11:20am (America/Chicago)"
+ *   "You've reached your Fable 5 limit. Run /usage-credits to continue..."
+ */
+function classifyLimit(text) {
+  const s = String(text || '');
+  if (/hit your (session|usage) limit/i.test(s)) {
+    const m = /resets\s+(\d{1,2}:\d{2}\s*[ap]m)/i.exec(s);
+    return { kind: 'session', model: null, resetText: m ? m[1] : null };
+  }
+  if (/reached your weekly limit|weekly limit/i.test(s)) {
+    const m = /resets\s+(\d{1,2}:\d{2}\s*[ap]m)/i.exec(s);
+    return { kind: 'weekly', model: null, resetText: m ? m[1] : null };
+  }
+  const mm = /reached your (.+?) limit/i.exec(s);
+  if (mm) return { kind: 'model', model: mm[1].trim().slice(0, 40), resetText: null };
+  return null;
+}
+
+/** "11:20am", seen at `atMs`, as an absolute time. Rolls to tomorrow if past. */
+function parseResetAt(atMs, hhmm) {
+  if (!hhmm) return null;
+  const m = /^(\d{1,2}):(\d{2})\s*([ap])m$/i.exec(String(hhmm).trim());
+  if (!m) return null;
+  let h = Number(m[1]) % 12;
+  if (m[3].toLowerCase() === 'p') h += 12;
+  const d = new Date(atMs);
+  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, Number(m[2]), 0, 0);
+  if (r.getTime() <= atMs) r.setDate(r.getDate() + 1);
+  return r.getTime();
+}
+
+/*
+ * Individual refusals arrive in bursts - one per retry - so collapse anything
+ * of the same kind within GROUP_MS into a single lockout. Recovery is the
+ * first billable response afterwards: the moment work actually resumed.
+ */
+const LOCKOUT_GROUP_MS = 10 * 60e3;
+
+function lockouts() {
+  const out = [];
+  for (const h of limitHits) {
+    const p = out[out.length - 1];
+    if (p && p.kind === h.kind && p.model === h.model && h.t - p.lastAt < LOCKOUT_GROUP_MS) {
+      p.lastAt = h.t; p.hits++;
+      if (!p.resetAt && h.resetAt) { p.resetAt = h.resetAt; p.resetText = h.resetText; }
+    } else {
+      out.push({ t: h.t, lastAt: h.t, hits: 1, kind: h.kind, model: h.model,
+                 resetText: h.resetText, resetAt: h.resetAt, sessionId: h.sessionId });
+    }
+  }
+  // First billable response after each lockout ended.
+  for (const l of out) {
+    let lo = 0, hi = events.length - 1, idx = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1;
+      if (events[mid].t > l.lastAt) { idx = mid; hi = mid - 1; } else lo = mid + 1; }
+    l.recoveredAt = idx >= 0 ? events[idx].t : null;
+    l.waitedMs = l.recoveredAt ? l.recoveredAt - l.lastAt : null;
+    // Capacity came back sooner than the message promised: an early reset.
+    l.early = !!(l.resetAt && l.recoveredAt && l.recoveredAt < l.resetAt - 60e3);
+    l.earlyByMs = l.early ? l.resetAt - l.recoveredAt : null;
+  }
+  return out;
+}
+
+/** Are we locked out right now, and until when? */
+function blockState() {
+  const all = lockouts();
+  const last = all[all.length - 1];
+  const now = Date.now();
+  if (!last) return { blocked: false, lockouts: 0 };
+  const blocked = !last.recoveredAt && (now - last.lastAt) < 12 * 3600e3;
+  return {
+    blocked,
+    kind: blocked ? last.kind : null,
+    model: blocked ? last.model : null,
+    since: blocked ? last.t : null,
+    resetAt: blocked ? last.resetAt : null,
+    resetText: blocked ? last.resetText : null,
+    resetsInMs: blocked && last.resetAt ? last.resetAt - now : null,
+    lockouts: all.length,
+    last
+  };
+}
+
 // --------------------------------------------------------------- ingest ----
 
 function projectNameFromPath(dir) {
@@ -378,6 +478,23 @@ function ingestLine(line, ctx) {
   }
 
   if (o.type !== 'assistant') return;
+
+  // A refusal, not a response: no tokens, but it is how we learn about limits.
+  if (o.isApiErrorMessage) {
+    if (o.uuid && limitSeen.has(o.uuid)) return;
+    const info = classifyLimit(textOf(o.message && o.message.content));
+    if (!info) return;
+    if (o.uuid) limitSeen.add(o.uuid);
+    const at = Date.parse(o.timestamp || '') || Date.now();
+    limitHits.push({
+      t: at, kind: info.kind, model: info.model,
+      resetText: info.resetText, resetAt: parseResetAt(at, info.resetText),
+      sessionId: sid || null
+    });
+    limitHits.sort((a, b) => a.t - b.t);
+    return;
+  }
+
   const m = o.message;
   if (!m || !m.usage) return;
   const model = m.model;
@@ -488,6 +605,7 @@ function scan(initial = false) {
     // past response for it stuck at $0.
     console.log('[burnmeter] pricing.json changed - re-pricing all history');
     events.length = 0; seen.clear(); cursors.clear(); sessions.clear();
+    limitHits.length = 0; limitSeen.clear();
     activeCacheAt = -1;
     initial = true;
   }
@@ -1129,6 +1247,7 @@ function buildState() {
       calibration: CONFIG.calibration || null
     },
 
+    block: blockState(),
     live,
     active,
     activeCount: active.length,
@@ -1199,6 +1318,9 @@ function buildMini() {
     blockResetsIn,
     stale: limits.stale,
     live,
+    block: (() => { const b = blockState();
+      return { blocked: b.blocked, kind: b.kind, model: b.model,
+               resetsInMs: b.resetsInMs, resetText: b.resetText }; })(),
     instances: active.length,
     instancesHot: active.filter(a => a.hot).length,
     instanceCost: active.reduce((n, a) => n + a.windowCost, 0),
@@ -1215,6 +1337,82 @@ function buildMini() {
     cluster: CONFIG.miniCluster || ['rate', 'today', 'fivehour', 'week'],
     onTop: !!CONFIG.miniOnTop
   };
+}
+
+// ---------------------------------------------------------------- alerts ----
+
+/*
+ * Being locked out is not the expensive part. Not noticing when the lockout
+ * ends is: an hour of sitting on your hands after capacity came back is an
+ * hour of the allowance you paid for, gone.
+ *
+ * Three moments are worth a word, and each fires at most once per lockout:
+ *   hit    you just got blocked - and here is when it says it comes back
+ *   reset  the stated reset time has arrived, so try again
+ *   back   work resumed, and whether it resumed earlier than promised
+ *
+ * Only transitions this process actually watched are announced. Restarting
+ * the server does not re-announce a lockout from last week.
+ */
+let alertState = { key: null, sawBlocked: false, hit: false, reset: false, back: false };
+const alertLog = [];
+
+function notify(title, body, opts = {}) {
+  alertLog.push({ t: Date.now(), title, body });
+  if (alertLog.length > 50) alertLog.shift();
+  console.log(`[burnmeter] ${title} - ${body}`);
+  if (process.platform !== 'win32') return;
+  const script = path.join(DESKTOP_D, 'notify.ps1');
+  if (fs.existsSync(script)) {
+    const argv = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
+                  '-Title', title, '-Body', body];
+    if (CONFIG.alertSound && opts.sound !== false) argv.push('-Sound');
+    try { execFile('powershell.exe', argv, { timeout: 10000, windowsHide: true }, () => {}); } catch {}
+  }
+  // Put the gauge where it will be seen, too: a toast can be missed.
+  if (opts.raise !== false) raiseWindow('mini').catch(() => {});
+}
+
+const clockOf = ms => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const mins = ms => ms < 60e3 ? 'under a minute'
+  : ms < 36e5 ? Math.round(ms / 60e3) + ' minutes'
+  : (ms / 36e5).toFixed(1) + ' hours';
+
+function checkAlerts() {
+  if (!CONFIG.alertOnReset) return;
+  const b = blockState();
+  if (!b.last) return;
+  const key = String(b.last.t);
+  if (key !== alertState.key) alertState = { key, sawBlocked: false, hit: false, reset: false, back: false };
+
+  const now = Date.now();
+  const fresh = now - b.last.lastAt < 12 * 3600e3;
+
+  if (b.blocked && fresh) {
+    if (!alertState.sawBlocked) {
+      alertState.sawBlocked = true;
+      // Only announce the hit itself if it happened while we were watching.
+      if (now - b.last.lastAt < 5 * 60e3 && !alertState.hit) {
+        alertState.hit = true;
+        const what = b.kind === 'model' ? `${b.model} limit` : `${b.kind} limit`;
+        notify('Locked out - ' + what,
+          b.resetAt ? `Back at ${clockOf(b.resetAt)}, about ${mins(b.resetAt - now)} away.`
+                    : 'No reset time given. BurnMeter will tell you when it clears.');
+      }
+    }
+    // The moment the stated reset arrives.
+    if (b.resetAt && !alertState.reset && now >= b.resetAt && now - b.resetAt < 10 * 60e3) {
+      alertState.reset = true;
+      notify('Limit should be clear', `It said ${clockOf(b.resetAt)}. That has passed - go.`);
+    }
+  } else if (alertState.sawBlocked && !alertState.back && b.last.recoveredAt) {
+    // We watched it blocked and work has resumed.
+    alertState.back = true;
+    notify('Capacity is back',
+      b.last.early
+        ? `Reset ${mins(b.last.earlyByMs)} earlier than it said. You have extra room.`
+        : `Locked out for ${mins(b.last.waitedMs || 0)}.`);
+  }
 }
 
 // --------------------------------------------------------------- update ----
@@ -1463,6 +1661,54 @@ const server = http.createServer(async (req, res) => {
     return json(res, updateState);
   }
 
+  if (url.pathname === '/api/limits') {
+    const all = lockouts();
+    const now = Date.now();
+    const days = Math.min(400, Math.max(1, Number(q.get('days')) || 90));
+    const from = now - days * 864e5;
+    const win = all.filter(l => l.t >= from);
+    const blockedMs = win.reduce((n, l) => n + Math.min(l.waitedMs || 0, 6 * 3600e3), 0);
+    // What does an hour just after a reset look like next to a normal hour?
+    let afterReset = 0, afterResetHours = 0;
+    for (const l of win) {
+      if (!l.recoveredAt) continue;
+      afterReset += sumRange(l.recoveredAt, l.recoveredAt + 36e5).cost;
+      afterResetHours++;
+    }
+    const total = sumRange(from);
+    const spanHours = Math.max(1, (now - Math.max(from, events.length ? events[0].t : from)) / 36e5);
+    return json(res, {
+      now, days,
+      state: blockState(),
+      lockouts: win.slice(-100).reverse(),
+      totals: {
+        count: win.length,
+        blockedMs,
+        early: win.filter(l => l.early).length,
+        byKind: win.reduce((a, l) => { a[l.kind] = (a[l.kind] || 0) + 1; return a; }, {}),
+        avgWaitMs: win.length ? blockedMs / win.length : 0,
+        afterResetPerHour: afterResetHours ? afterReset / afterResetHours : null,
+        typicalPerHour: total.cost / spanHours
+      }
+    });
+  }
+
+  if (url.pathname === '/api/alerts') {
+    if (req.method === 'POST') {
+      const j = await readBody(req);
+      if (!j) return json(res, { error: 'bad json' }, 400);
+      if (j.test) {
+        notify('BurnMeter test alert', 'This is what a limit-reset alert looks like.');
+        return json(res, { ok: true, sent: true });
+      }
+      if (typeof j.alertOnReset === 'boolean') CONFIG.alertOnReset = j.alertOnReset;
+      if (typeof j.alertSound === 'boolean') CONFIG.alertSound = j.alertSound;
+      saveConfig(CONFIG);
+      return json(res, { ok: true, alertOnReset: CONFIG.alertOnReset, alertSound: CONFIG.alertSound });
+    }
+    return json(res, { alertOnReset: CONFIG.alertOnReset, alertSound: CONFIG.alertSound, recent: alertLog.slice(-15).reverse() });
+  }
+
   if (url.pathname === '/api/health') {
     return json(res, { ok: true, events: events.length, sessions: sessions.size, scanning });
   }
@@ -1609,7 +1855,7 @@ function boot() {
     const wait = Math.max(0, 700 - (Date.now() - lastScanAt));
     scanTimer = setTimeout(() => {
       scanTimer = null; lastScanAt = Date.now();
-      if (scan()) pushState();
+      if (scan()) { pushState(); checkAlerts(); }
     }, wait);
   };
   let watching = false;
@@ -1640,6 +1886,8 @@ function boot() {
   writeWorthCache();
   setInterval(writeWorthCache, 20000);
   setInterval(pushState, 1000);              // keep clocks and rates live
+  setInterval(checkAlerts, 15000);           // limit hit / reset / recovery
+  setTimeout(checkAlerts, 5000).unref?.();
 
   // Look for a new version shortly after boot, then a few times a day. Failure
   // is silent by design — being offline is not something to nag about.
