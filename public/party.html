@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- window.ps1 finds this window by title to close it if window.close() is
+     refused, so keep the title in step with server.js's WINDOW_TITLE. -->
+<title>BurnMeter Party</title>
+<link rel="icon" href="/icon.svg">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{
+  background:radial-gradient(ellipse at 50% 34%, #241b33 0%, #0b0910 72%);
+  color:#fff; font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased; user-select:none; cursor:default;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+#confetti{position:fixed;inset:0;z-index:1;pointer-events:none}
+.stage{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:1px}
+
+h1{
+  font-size:clamp(24px,6.4vw,54px); font-weight:800; letter-spacing:-.02em; line-height:1;
+  background:linear-gradient(92deg,#ffd166,#c98bff 45%,#8ecae6);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  animation:pop .55s cubic-bezier(.2,1.6,.4,1) both;
+}
+.sub{font-size:clamp(12px,2.3vw,16px);color:#c9c8bd;animation:pop .55s .1s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes pop{from{opacity:0;transform:scale(.7) translateY(14px)}to{opacity:1;transform:none}}
+
+#dancer{width:clamp(150px,36vh,250px);height:auto;margin:4px 0 0;overflow:visible}
+
+/* Each part swings on its own pivot; the whole figure bounces on the beat.
+   0.48s a cycle is 125bpm, which is about right for a celebration. */
+.beat  {animation:beat .48s ease-in-out infinite}
+.hips  {animation:hips .96s ease-in-out infinite; transform-origin:120px 156px}
+.armL  {animation:armL .48s ease-in-out infinite; transform-origin:101px 104px}
+.armR  {animation:armR .48s ease-in-out infinite; transform-origin:139px 104px}
+.legL  {animation:legL .96s ease-in-out infinite; transform-origin:112px 186px}
+.legR  {animation:legR .96s ease-in-out infinite; transform-origin:128px 186px}
+.head  {animation:head .96s ease-in-out infinite; transform-origin:120px 88px}
+.strandL{animation:strandL .96s ease-in-out infinite; transform-origin:99px 46px}
+.strandR{animation:strandR .96s ease-in-out infinite; transform-origin:141px 46px}
+.blink {animation:blink 4.2s infinite}
+.note  {animation:note 2.1s linear infinite; opacity:0}
+.note2 {animation:note 2.1s .95s linear infinite; opacity:0}
+
+@keyframes beat   {0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes hips   {0%,100%{transform:rotate(-3.5deg)}50%{transform:rotate(3.5deg)}}
+@keyframes head   {0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
+@keyframes armL   {0%,100%{transform:rotate(24deg)}50%{transform:rotate(-96deg)}}
+@keyframes armR   {0%,100%{transform:rotate(-96deg)}50%{transform:rotate(24deg)}}
+@keyframes legL   {0%,100%{transform:rotate(6deg)}50%{transform:rotate(-7deg)}}
+@keyframes legR   {0%,100%{transform:rotate(-6deg)}50%{transform:rotate(7deg)}}
+@keyframes strandL{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(10deg)}}
+@keyframes strandR{0%,100%{transform:rotate(9deg)}50%{transform:rotate(-10deg)}}
+@keyframes blink  {0%,96%,100%{transform:scaleY(1)}98%{transform:scaleY(.08)}}
+@keyframes note   {0%{opacity:0;transform:translate(0,0) rotate(0)}
+                   15%{opacity:1}
+                   100%{opacity:0;transform:translate(24px,-56px) rotate(22deg)}}
+
+.foot{position:fixed;bottom:9px;left:0;right:0;z-index:3;text-align:center;font-size:11.5px;color:#6f6d66}
+.foot b{color:#a9a7a0;font-variant-numeric:tabular-nums}
+.foot button{
+  background:none;border:1px solid rgba(255,255,255,.18);color:#a9a7a0;font:inherit;font-size:11px;
+  padding:3px 10px;border-radius:6px;cursor:pointer;margin-left:8px;
+}
+.foot button:hover{color:#fff;border-color:rgba(255,255,255,.4)}
+@media (prefers-reduced-motion: reduce){ *{animation:none !important} }
+</style>
+</head>
+<body>
+<canvas id="confetti"></canvas>
+
+<div class="stage">
+  <h1 id="title">CAPACITY IS BACK</h1>
+  <div class="sub" id="sub">go go go</div>
+
+  <!-- Original artwork, drawn here rather than borrowed from anywhere. -->
+  <svg id="dancer" viewBox="0 0 240 268" role="img" aria-label="a figure dancing">
+    <defs>
+      <linearGradient id="hair" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#c08cf0"/><stop offset="1" stop-color="#6f42a8"/>
+      </linearGradient>
+      <linearGradient id="blazer" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#5b3a74"/><stop offset="1" stop-color="#3d2450"/>
+      </linearGradient>
+      <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+        <stop offset="0" stop-color="#c98bff" stop-opacity=".3"/>
+        <stop offset="1" stop-color="#c98bff" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+
+    <ellipse cx="120" cy="252" rx="44" ry="7.5" fill="#000" opacity=".38"/>
+    <circle cx="120" cy="130" r="104" fill="url(#glow)"/>
+
+    <g class="beat">
+      <!-- legs -->
+      <g class="legL">
+        <path d="M107 184 q-2 26 0 48" stroke="#e0bda0" stroke-width="11" stroke-linecap="round" fill="none"/>
+        <path d="M101 232 h13 l3 8 h-19 z" fill="#2b1f38"/>
+      </g>
+      <g class="legR">
+        <path d="M133 184 q2 26 0 48" stroke="#e0bda0" stroke-width="11" stroke-linecap="round" fill="none"/>
+        <path d="M126 232 h13 l3 8 h-19 z" fill="#2b1f38"/>
+      </g>
+
+      <g class="hips">
+        <!-- pencil skirt -->
+        <path d="M100 150 h40 l4 40 h-48 z" fill="#33204a"/>
+        <path d="M100 150 h40 l1 8 h-42 z" fill="#251636"/>
+      </g>
+
+      <!-- arms -->
+      <g class="armL">
+        <path d="M101 104 q-9 22 -6 42" stroke="url(#blazer)" stroke-width="12" stroke-linecap="round" fill="none"/>
+        <path d="M95 138 q-2 8 -1 14" stroke="#e0bda0" stroke-width="9" stroke-linecap="round" fill="none"/>
+        <circle cx="94" cy="156" r="6" fill="#e0bda0"/>
+      </g>
+      <g class="armR">
+        <path d="M139 104 q9 22 6 42" stroke="url(#blazer)" stroke-width="12" stroke-linecap="round" fill="none"/>
+        <path d="M145 138 q2 8 1 14" stroke="#e0bda0" stroke-width="9" stroke-linecap="round" fill="none"/>
+        <circle cx="146" cy="156" r="6" fill="#e0bda0"/>
+      </g>
+
+      <!-- blouse + blazer -->
+      <path d="M104 98 h32 l6 54 h-44 z" fill="#f2e9dc"/>
+      <path d="M101 97 q19 -6 38 0 l5 55 h-14 l-9 -46 -9 46 h-16 z" fill="url(#blazer)"/>
+      <path d="M112 97 l8 20 l8 -20 q-8 -3 -16 0 z" fill="#e8dccb"/>
+      <circle cx="120" cy="128" r="3.2" fill="#ffd166"/>
+
+      <!-- neck -->
+      <path d="M114 84 h12 v12 q-6 4 -12 0 z" fill="#d9b195"/>
+
+      <g class="head">
+        <!-- bun, behind -->
+        <circle cx="120" cy="30" r="15" fill="#6f42a8"/>
+        <circle cx="120" cy="30" r="15" fill="url(#hair)" opacity=".55"/>
+        <!-- loose strands framing the face -->
+        <g class="strandL"><path d="M99 46 q-11 26 -5 48 q6 -14 11 -22 q-6 -14 -6 -26 z" fill="url(#hair)"/></g>
+        <g class="strandR"><path d="M141 46 q11 26 5 48 q-6 -14 -11 -22 q6 -14 6 -26 z" fill="url(#hair)"/></g>
+
+        <!-- face -->
+        <ellipse cx="120" cy="62" rx="24" ry="27" fill="#e8c9ad"/>
+        <!-- swept-back hair -->
+        <path d="M96 58 q2 -30 24 -30 q22 0 24 30 q2 -20 -6 -28 q-8 -8 -18 -8 q-10 0 -18 8 q-8 8 -6 28 z" fill="url(#hair)"/>
+        <path d="M96 58 q4 -22 24 -22 q20 0 24 22 q-6 -14 -24 -14 q-18 0 -24 14 z" fill="#8b5cc0"/>
+
+        <!-- glasses -->
+        <rect x="103" y="57" width="16" height="12" rx="3.5" fill="#ffffff" opacity=".14"
+              stroke="#2f2438" stroke-width="2"/>
+        <rect x="121" y="57" width="16" height="12" rx="3.5" fill="#ffffff" opacity=".14"
+              stroke="#2f2438" stroke-width="2"/>
+        <path d="M119 63 h2" stroke="#2f2438" stroke-width="2"/>
+        <path d="M103 61 l-6 -2 M137 61 l6 -2" stroke="#2f2438" stroke-width="2" stroke-linecap="round"/>
+
+        <!-- eyes -->
+        <g class="blink" style="transform-origin:111px 63px">
+          <ellipse cx="111" cy="63" rx="3.4" ry="4.2" fill="#2b2233"/>
+          <circle cx="112.2" cy="61.6" r="1.3" fill="#fff"/>
+        </g>
+        <g class="blink" style="transform-origin:129px 63px">
+          <ellipse cx="129" cy="63" rx="3.4" ry="4.2" fill="#2b2233"/>
+          <circle cx="130.2" cy="61.6" r="1.3" fill="#fff"/>
+        </g>
+        <path d="M106 55 q5 -3 10 -1 M124 54 q5 -2 10 1" stroke="#5b3a74" stroke-width="1.8"
+              fill="none" stroke-linecap="round"/>
+        <ellipse cx="102" cy="72" rx="4.5" ry="2.6" fill="#e08fa8" opacity=".45"/>
+        <ellipse cx="138" cy="72" rx="4.5" ry="2.6" fill="#e08fa8" opacity=".45"/>
+        <path d="M115 77 q5 5 10 0" stroke="#a8446b" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        <circle cx="97" cy="66" r="2.2" fill="#ffd166"/>
+        <circle cx="143" cy="66" r="2.2" fill="#ffd166"/>
+      </g>
+
+      <g class="note"  fill="#ffd166"><circle cx="170" cy="112" r="4"/><rect x="173" y="96" width="2.2" height="17"/></g>
+      <g class="note2" fill="#8ecae6"><circle cx="62" cy="120" r="3.4"/><rect x="64.6" y="106" width="2" height="15"/></g>
+    </g>
+  </svg>
+</div>
+
+<div class="foot">
+  closing in <b id="count">15</b>s
+  <button id="stay">stay open</button>
+  <button id="bye">close now</button>
+</div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const qs = new URLSearchParams(location.search);
+
+$('#title').textContent = (qs.get('title') || 'CAPACITY IS BACK').toUpperCase().slice(0, 40);
+$('#sub').innerHTML = (qs.get('sub') || 'go go go')
+  .slice(0, 120).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+/* -------------------------------------------------------------- confetti -- */
+const cv = $('#confetti'), cx = cv.getContext('2d');
+let W = 0, H = 0; const dpr = Math.min(2, devicePixelRatio || 1);
+function fit() {
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', fit); fit();
+
+const COLOURS = ['#ffd166', '#ff8fab', '#8ecae6', '#25a83b', '#e2673a', '#c98bff', '#ffffff'];
+const bits = [];
+/** A cannon from a point, or a curtain falling from above. */
+function burst(n, ox, oy, spread) {
+  for (let i = 0; i < n; i++) {
+    const cannon = ox != null;
+    const a = cannon ? (-Math.PI / 2) + (Math.random() - .5) * (spread || 1.5) : 0;
+    const sp = cannon ? 6 + Math.random() * 11 : 0;
+    bits.push({
+      x: cannon ? ox : Math.random() * W,
+      y: cannon ? oy : -20 - Math.random() * H * .5,
+      vx: cannon ? Math.cos(a) * sp : (Math.random() - .5) * 2.4,
+      vy: cannon ? Math.sin(a) * sp : 1 + Math.random() * 3,
+      w: 5 + Math.random() * 8, h: 8 + Math.random() * 11,
+      rot: Math.random() * Math.PI, vr: (Math.random() - .5) * .4,
+      col: COLOURS[(Math.random() * COLOURS.length) | 0],
+      wob: Math.random() * Math.PI * 2
+    });
+  }
+  if (bits.length > 1200) bits.splice(0, bits.length - 1200);
+}
+function frame() {
+  cx.clearRect(0, 0, W, H);
+  for (let i = bits.length - 1; i >= 0; i--) {
+    const b = bits[i];
+    b.vy += 0.17; b.wob += 0.1;
+    b.x += b.vx + Math.sin(b.wob) * 0.9;
+    b.y += b.vy; b.rot += b.vr; b.vx *= 0.992;
+    if (b.y > H + 40) { bits.splice(i, 1); continue; }
+    cx.save();
+    cx.translate(b.x, b.y); cx.rotate(b.rot);
+    cx.fillStyle = b.col;
+    cx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h * Math.abs(Math.cos(b.wob * .7)));
+    cx.restore();
+  }
+  requestAnimationFrame(frame);
+}
+frame();
+
+/* ------------------------------------------------------------------ noise -- */
+/*
+ * A party popper, a paper horn and a kazoo, synthesised - nothing to ship.
+ *   pop     white noise through a bandpass, plus a pitch-dropping thump
+ *   horn    sawtooth glissando up, the way a paper blowout unrolls
+ *   kazoo   sawtooth + vibrato through a narrow bandpass: the buzzy, nasal bit
+ * The window is launched with --autoplay-policy=no-user-gesture-required, so
+ * it is allowed to make noise without anyone clicking first.
+ */
+let AC = null;
+function audio() {
+  if (qs.get('sound') === '0') return null;
+  if (AC) return AC;
+  try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; }
+  return AC;
+}
+
+function noiseBuffer(ac, secs, shape) {
+  const len = Math.max(1, Math.floor(ac.sampleRate * secs));
+  const buf = ac.createBuffer(1, len, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * shape(i / len);
+  return buf;
+}
+
+function pop(at = 0, gain = 1) {
+  const ac = audio(); if (!ac) return;
+  const t = ac.currentTime + at;
+  // the crack
+  const src = ac.createBufferSource();
+  src.buffer = noiseBuffer(ac, 0.16, x => Math.pow(1 - x, 7));
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1700; bp.Q = 0.8;
+  const g = ac.createGain(); g.gain.value = 0.85 * gain;
+  src.connect(bp); bp.connect(g); g.connect(ac.destination);
+  src.start(t);
+  // the body of the thump
+  const o = ac.createOscillator(), og = ac.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(440, t);
+  o.frequency.exponentialRampToValueAtTime(55, t + 0.13);
+  og.gain.setValueAtTime(0.7 * gain, t);
+  og.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+  o.connect(og); og.connect(ac.destination);
+  o.start(t); o.stop(t + 0.25);
+  // paper scatter
+  const s2 = ac.createBufferSource();
+  s2.buffer = noiseBuffer(ac, 0.7, x => Math.pow(1 - x, 2.2) * 0.5);
+  const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3800;
+  const g2 = ac.createGain(); g2.gain.value = 0.5 * gain;
+  s2.connect(hp); hp.connect(g2); g2.connect(ac.destination);
+  s2.start(t + 0.02);
+}
+
+function horn(at = 0) {
+  const ac = audio(); if (!ac) return;
+  const t = ac.currentTime + at;
+  const o = ac.createOscillator(), g = ac.createGain();
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q = 1.4;
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(196, t);
+  o.frequency.exponentialRampToValueAtTime(587, t + 0.30);
+  o.frequency.setValueAtTime(587, t + 0.34);
+  o.frequency.exponentialRampToValueAtTime(392, t + 0.62);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.5, t + 0.05);
+  g.gain.setValueAtTime(0.5, t + 0.40);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.66);
+  o.connect(bp); bp.connect(g); g.connect(ac.destination);
+  o.start(t); o.stop(t + 0.7);
+}
+
+function kazoo(freq, at, dur) {
+  const ac = audio(); if (!ac) return;
+  const t = ac.currentTime + at;
+  const o = ac.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(freq, t);
+  // vibrato: the wobble that makes it read as a kazoo and not a synth
+  const vib = ac.createOscillator(), vg = ac.createGain();
+  vib.frequency.value = 5.5; vg.gain.value = freq * 0.022;
+  vib.connect(vg); vg.connect(o.frequency);
+  // buzz: a touch of noise riding along
+  const bz = ac.createBufferSource();
+  bz.buffer = noiseBuffer(ac, dur + 0.1, () => 1);
+  const bzg = ac.createGain(); bzg.gain.value = 0.05;
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass';
+  bp.frequency.value = freq * 2.6; bp.Q = 2.4;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.34, t + 0.03);
+  g.gain.setValueAtTime(0.34, t + dur * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(bp); bz.connect(bzg); bzg.connect(bp); bp.connect(g); g.connect(ac.destination);
+  o.start(t); o.stop(t + dur + 0.05);
+  vib.start(t); vib.stop(t + dur + 0.05);
+  bz.start(t); bz.stop(t + dur + 0.05);
+}
+
+function celebrate() {
+  pop(0);
+  horn(0.10);
+  // a little kazoo fanfare: G G C E G held
+  const G4 = 392, C5 = 523.25, E5 = 659.25, G5 = 783.99;
+  [[G4, .62, .13], [G4, .78, .13], [C5, .94, .16], [E5, 1.14, .16], [G5, 1.34, .62]]
+    .forEach(([f, a, d]) => kazoo(f, a, d));
+  pop(1.34, 0.8);
+}
+
+/* --------------------------------------------------------------- sequence -- */
+burst(140, W / 2, H * 0.72, 1.5);          // cannon from the floor
+setTimeout(() => { burst(60, 10, H * 0.5, 1.0); pop(0, .7); }, 900);
+setTimeout(() => { burst(60, W - 10, H * 0.5, 1.0); }, 1000);
+setTimeout(() => burst(70), 1500);          // curtain from above
+const rain = setInterval(() => burst(26), 850);
+const pops = setInterval(() => { burst(70, Math.random() * W, H * .8, 1.2); pop(0, .55); }, 4200);
+celebrate();
+
+/* ------------------------------------------------------------- auto close -- */
+let left = Math.max(3, Math.min(120, Number(qs.get('secs')) || 15));
+let staying = false;
+$('#count').textContent = left;
+const tick = setInterval(() => {
+  if (staying) return;
+  left--;
+  $('#count').textContent = Math.max(0, left);
+  if (left <= 0) { clearInterval(tick); clearInterval(rain); clearInterval(pops); bye(); }
+}, 1000);
+
+$('#stay').onclick = () => {
+  staying = true;
+  $('.foot').innerHTML = '<button id="bye2">close</button>';
+  $('#bye2').onclick = bye;
+};
+$('#bye').onclick = bye;
+
+function bye() {
+  clearInterval(rain); clearInterval(pops);
+  try { window.close(); } catch {}
+  // An app window the browser opened may refuse window.close(); ask the
+  // server to close it the OS way instead.
+  setTimeout(() => {
+    fetch('/api/window', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'close', which: 'party' })
+    }).catch(() => {});
+  }, 400);
+}
+</script>
+</body>
+</html>

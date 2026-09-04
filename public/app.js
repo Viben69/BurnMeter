@@ -350,6 +350,7 @@ async function loadLimits() {
   const a = await (await fetch('/api/alerts')).json().catch(() => ({}));
   if (document.activeElement !== $('#lAlert')) $('#lAlert').checked = !!a.alertOnReset;
   if (document.activeElement !== $('#lSound')) $('#lSound').checked = !!a.alertSound;
+  if (document.activeElement !== $('#lParty')) $('#lParty').checked = !!a.partyOnReset;
 
   // --- current state ---
   const st = d.state;
@@ -1096,10 +1097,12 @@ $('#lTest').onclick = async () => {
 };
 const saveAlerts = () => fetch('/api/alerts', {
   method: 'POST', headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ alertOnReset: $('#lAlert').checked, alertSound: $('#lSound').checked })
+  body: JSON.stringify({ alertOnReset: $('#lAlert').checked, alertSound: $('#lSound').checked,
+                         partyOnReset: $('#lParty').checked })
 }).catch(() => {});
 $('#lAlert').onchange = saveAlerts;
 $('#lSound').onchange = saveAlerts;
+$('#lParty').onchange = saveAlerts;
 
 selectTab((location.hash || '#overview').slice(1) || 'overview');
 connect();

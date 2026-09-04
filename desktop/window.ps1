@@ -14,13 +14,14 @@
     -Action corner   park it in -Corner (TL/TR/BL/BR) of its current monitor
     -Action move     put its top-left at -X,-Y (keeps size)
     -Action raise     bring it to the front (and restore it if minimised)
+    -Action close    ask it to close (WM_CLOSE)
     -Action state    report current size, position and topmost flag
 
   Prints "ok <n>" on success, "not-found" when no matching window is open.
 #>
 param(
   [string]$Title = 'BurnMeter Gauge',
-  [ValidateSet('top','untop','size','corner','move','raise','state')][string]$Action = 'state',
+  [ValidateSet('top','untop','size','corner','move','raise','close','state')][string]$Action = 'state',
   [switch]$Exact,
   [int]$X = 0,
   [int]$Y = 0,
@@ -56,6 +57,7 @@ public class BurnMeterWin {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr PostMessage(IntPtr hWnd, uint msg, IntPtr w, IntPtr l);
 
   public static List<IntPtr> Find(string needle, string[] procNames) { return Find(needle, procNames, false); }
   public static List<IntPtr> Find(string needle, string[] procNames, bool exact) {
@@ -130,6 +132,10 @@ foreach ($h in $windows) {
 
     'move' {
       [void][BurnMeterWin]::SetWindowPos($h, [IntPtr]::Zero, $X, $Y, 0, 0, ($SWP_NOSIZE -bor $SWP_NOZORDER -bor $SWP_NOACTIVATE))
+    }
+
+    'close' {
+      [void][BurnMeterWin]::PostMessage($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)   # WM_CLOSE
     }
 
     'raise' {

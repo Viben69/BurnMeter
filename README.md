@@ -302,8 +302,25 @@ front — at three moments, each at most once per lockout:
 | **Capacity is back** | work resumed — and by how much it beat the stated time, if it did |
 
 Only transitions the running server actually watched are announced; restarting
-it never re-announces an old lockout. Turn the alert or its sound off in the
-Limits tab, and **Test alert** proves the plumbing without waiting for a limit.
+it never re-announces an old lockout. Turn the alert, its sound, or the confetti
+off in the Limits tab, and **Test alert** proves the whole thing without waiting
+for a limit.
+
+### The party
+
+Good news gets a window of its own: confetti cannons, a party popper, a paper
+horn and a kazoo fanfare, and a dancing figure. Fifteen seconds, then it closes
+itself — **stay open** holds it if you want.
+
+Only for good news. Getting blocked gets a toast and nothing else.
+
+Everything in it is generated: the confetti is a canvas particle system, the
+sound is synthesised through Web Audio (a noise burst through a bandpass for
+the pop, a sawtooth glissando for the horn, sawtooth-plus-vibrato for the
+kazoo's buzz), and the dancer is original SVG animated with CSS keyframes. No
+audio files, no images, nothing fetched. The window is launched with
+`--autoplay-policy=no-user-gesture-required` so it can make a noise nobody
+clicked for. `partySeconds` in `config.json` sets the length.
 
 The gauge has a matching **Reset in** reading that counts down while blocked.
 

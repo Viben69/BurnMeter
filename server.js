@@ -78,6 +78,10 @@ const DEFAULT_CONFIG = {
   // to not be sitting on your hands ten minutes after capacity came back.
   alertOnReset: true,
   alertSound: true,
+  // Confetti, a fanfare and a dancing figure when a limit lifts. Purely for
+  // the pleasure of it - and it is genuinely hard to miss, which is the point.
+  partyOnReset: true,
+  partySeconds: 15,
   // 'single' shows one reading and cycles; 'cluster' shows several at once,
   // like an instrument cluster. miniCluster is the ordered list of readings.
   miniLayout: 'single',
@@ -94,7 +98,7 @@ const DEFAULT_CONFIG = {
   calibration: null
 };
 
-const NUMERIC_KEYS = new Set(['monthlyUsd', 'port', 'lookbackDays', 'needleWindowSec', 'pollMs', 'miniScale', 'renewalDay']);
+const NUMERIC_KEYS = new Set(['monthlyUsd', 'port', 'lookbackDays', 'needleWindowSec', 'pollMs', 'miniScale', 'renewalDay', 'partySeconds']);
 
 function loadConfig() {
   let c = { ...DEFAULT_CONFIG };
@@ -1371,6 +1375,36 @@ function notify(title, body, opts = {}) {
   }
   // Put the gauge where it will be seen, too: a toast can be missed.
   if (opts.raise !== false) raiseWindow('mini').catch(() => {});
+  if (opts.party && CONFIG.partyOnReset) throwParty(title, body);
+}
+
+/*
+ * A window of confetti. Only for good news - getting blocked does not deserve
+ * a fanfare - and only one at a time.
+ */
+let partyUntil = 0;
+function throwParty(title, body) {
+  const now = Date.now();
+  if (now < partyUntil) return;                       // one is already running
+  const secs = Math.min(120, Math.max(3, Number(CONFIG.partySeconds) || 15));
+  partyUntil = now + (secs + 4) * 1000;
+  const q = `?title=${encodeURIComponent(title)}&sub=${encodeURIComponent(body)}` +
+            `&secs=${secs}&sound=${CONFIG.alertSound ? 1 : 0}`;
+  openWindow('party', { query: q });
+  setTimeout(() => winClose('party'), (secs + 3) * 1000);   // belt and braces
+}
+
+/** Close a window by title, for when the page's own window.close() is refused. */
+function winClose(which) {
+  if (process.platform !== 'win32') return;
+  const script = path.join(DESKTOP_D, 'window.ps1');
+  if (!fs.existsSync(script)) return;
+  try {
+    execFile('powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
+       '-Title', WINDOW_TITLE[which] || 'BurnMeter', '-Exact', '-Action', 'close'],
+      { timeout: 8000, windowsHide: true }, () => {});
+  } catch {}
 }
 
 const clockOf = ms => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -1403,7 +1437,8 @@ function checkAlerts() {
     // The moment the stated reset arrives.
     if (b.resetAt && !alertState.reset && now >= b.resetAt && now - b.resetAt < 10 * 60e3) {
       alertState.reset = true;
-      notify('Limit should be clear', `It said ${clockOf(b.resetAt)}. That has passed - go.`);
+      notify('Limit should be clear', `It said ${clockOf(b.resetAt)}. That has passed - go.`,
+             { party: true });
     }
   } else if (alertState.sawBlocked && !alertState.back && b.last.recoveredAt) {
     // We watched it blocked and work has resumed.
@@ -1411,7 +1446,8 @@ function checkAlerts() {
     notify('Capacity is back',
       b.last.early
         ? `Reset ${mins(b.last.earlyByMs)} earlier than it said. You have extra room.`
-        : `Locked out for ${mins(b.last.waitedMs || 0)}.`);
+        : `Locked out for ${mins(b.last.waitedMs || 0)}.`,
+      { party: true });
   }
 }
 
@@ -1588,6 +1624,10 @@ const server = http.createServer(async (req, res) => {
       action = j.on !== false ? 'top' : 'untop';
       CONFIG.miniOnTop = j.on !== false; saveConfig(CONFIG);
     }
+    if (action === 'close') {
+      winClose(j.which === 'party' ? 'party' : j.which === 'main' ? 'main' : 'mini');
+      return json(res, { ok: true, action });
+    }
     if (!['top', 'untop', 'size', 'corner', 'move', 'state'].includes(action))
       return json(res, { ok: false, reason: 'unknown action' }, 400);
 
@@ -1698,15 +1738,21 @@ const server = http.createServer(async (req, res) => {
       const j = await readBody(req);
       if (!j) return json(res, { error: 'bad json' }, 400);
       if (j.test) {
-        notify('BurnMeter test alert', 'This is what a limit-reset alert looks like.');
+        notify('BurnMeter test alert', 'This is what a limit-reset alert looks like.',
+               { party: j.party !== false });
         return json(res, { ok: true, sent: true });
       }
       if (typeof j.alertOnReset === 'boolean') CONFIG.alertOnReset = j.alertOnReset;
       if (typeof j.alertSound === 'boolean') CONFIG.alertSound = j.alertSound;
+      if (typeof j.partyOnReset === 'boolean') CONFIG.partyOnReset = j.partyOnReset;
+      if (isFinite(Number(j.partySeconds))) CONFIG.partySeconds = Math.min(120, Math.max(3, Math.round(Number(j.partySeconds))));
       saveConfig(CONFIG);
-      return json(res, { ok: true, alertOnReset: CONFIG.alertOnReset, alertSound: CONFIG.alertSound });
+      return json(res, { ok: true, alertOnReset: CONFIG.alertOnReset, alertSound: CONFIG.alertSound,
+                         partyOnReset: CONFIG.partyOnReset, partySeconds: CONFIG.partySeconds });
     }
-    return json(res, { alertOnReset: CONFIG.alertOnReset, alertSound: CONFIG.alertSound, recent: alertLog.slice(-15).reverse() });
+    return json(res, { alertOnReset: CONFIG.alertOnReset, alertSound: CONFIG.alertSound,
+                       partyOnReset: CONFIG.partyOnReset, partySeconds: CONFIG.partySeconds,
+                       recent: alertLog.slice(-15).reverse() });
   }
 
   if (url.pathname === '/api/health') {
@@ -1716,6 +1762,7 @@ const server = http.createServer(async (req, res) => {
   // static
   let rel = url.pathname === '/' ? '/index.html' : url.pathname;
   if (rel === '/mini') rel = '/mini.html';
+  if (rel === '/party') rel = '/party.html';
   const file = path.join(PUBLIC_D, path.normalize(rel).replace(/^([/\\])+/, ''));
   if (!file.startsWith(PUBLIC_D)) { res.writeHead(403); return res.end('nope'); }
   fs.readFile(file, (err, data) => {
@@ -1754,7 +1801,7 @@ function winHelper(extraArgs) {
   } catch {}
 }
 
-const WINDOW_TITLE = { mini: 'BurnMeter Gauge', main: 'BurnMeter' };
+const WINDOW_TITLE = { mini: 'BurnMeter Gauge', main: 'BurnMeter', party: 'BurnMeter Party' };
 
 /** Bring an already-open window to the front. Resolves false if there isn't one. */
 function raiseWindow(which) {
@@ -1773,11 +1820,14 @@ function raiseWindow(which) {
 /** Launch a chromeless app window — a real, movable, minimizable OS window. */
 function openWindow(which, opts = {}) {
   const base = `http://${CONFIG.host}:${CONFIG.port}`;
-  const url  = which === 'mini' ? `${base}/mini` : base;
+  const url  = which === 'mini'  ? `${base}/mini`
+             : which === 'party' ? `${base}/party${opts.query || ''}`
+             : base;
   const miniDefault = (CONFIG.miniLayout === 'cluster') ? '620,380' : '380,230';
   const rect = which === 'mini' ? CONFIG.miniRect : null;
   const size = which === 'mini'
     ? (opts.size || (rect ? `${rect.w},${rect.h}` : miniDefault))
+    : which === 'party' ? (opts.size || '560,520')
     : (opts.size || '1380,940');
 
   if (process.platform === 'win32') {
@@ -1788,7 +1838,7 @@ function openWindow(which, opts = {}) {
       // browser session" and no new window appears - so the gauge and the
       // dashboard sharing one profile meant that whichever opened second
       // silently never opened at all.
-      const profile = path.join(APP_DIR, which === 'mini' ? 'browser-profile' : 'browser-profile-main');
+      const profile = path.join(APP_DIR, 'browser-profile' + (which === 'mini' ? '' : '-' + which));
       const args = [
         `--app=${url}`,
         `--window-size=${size}`,
@@ -1797,6 +1847,9 @@ function openWindow(which, opts = {}) {
         '--no-default-browser-check',
         '--disable-features=Translate,MediaRouter'
       ];
+      // The party makes a noise on its own; without this Chromium's autoplay
+      // policy silences a window nobody has clicked in.
+      if (which === 'party') args.push('--autoplay-policy=no-user-gesture-required');
       const pos = opts.pos || (rect ? `${rect.x},${rect.y}` : null);
       if (pos) args.push(`--window-position=${pos}`);
       try {
