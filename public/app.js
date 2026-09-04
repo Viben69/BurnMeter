@@ -912,7 +912,13 @@ $$('.tabs button').forEach(b => b.onclick = () => selectTab(b.dataset.tab));
 
 // ================================================================= plumbing =
 
+let bootSeen = null;
 function apply(s) {
+  // Server restarted (an update, usually): this page's code may be stale.
+  if (s.boot) {
+    if (bootSeen && s.boot !== bootSeen) { location.reload(); return; }
+    bootSeen = s.boot;
+  }
   STATE = s;
   $('#dot').className = 'dot' + (s.scanning ? ' warn' : '');
   $('#livetext').textContent = s.scanning ? 'scanning' : 'live';

@@ -122,7 +122,9 @@ Two layouts, under **Layout** in the picker:
 * **Cluster** — several readings at once in a grid, like an instrument cluster.
   One face style for all tiles; each tile is its own reading. Click a tile to
   change just that tile, or tick readings on and off in the picker (2 to 8).
-  The window steps through larger sizes to suit.
+  The grid takes its shape from the window: drag it tall and the tiles stack
+  into a column, drag it wide and they line up, and they refit live as you
+  resize - the tiles are always as large as the window allows.
 
 The default cluster is burn rate, today, 5-hour and weekly. Whatever you set is
 remembered, and the gauge opens at a size that fits the layout.

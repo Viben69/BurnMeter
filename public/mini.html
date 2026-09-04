@@ -571,6 +571,30 @@ face('odo', 'Odometer', 'lifetime total', (d) => {
 
 /* ================================================================ render = */
 let LAST = null, pinned = false;
+
+/*
+ * For n tiles of 2:1 aspect in a W x H box, which column count makes the
+ * tiles largest? Try every count: each gives a tile width from the columns,
+ * capped by the height the rows leave. Keep the one with the biggest tile.
+ */
+function bestGrid(n, W, H, gap = 5) {
+  if (!(W > 0) || !(H > 0)) return { cols: n <= 4 ? 2 : n <= 6 ? 3 : 4, rows: Math.ceil(n / (n <= 4 ? 2 : n <= 6 ? 3 : 4)) };
+  let best = null;
+  for (let c = 1; c <= n; c++) {
+    const r = Math.ceil(n / c);
+    let tw = (W - gap * (c - 1)) / c, th = tw / 2;
+    if (th * r + gap * (r - 1) > H) { th = (H - gap * (r - 1)) / r; tw = th * 2; }
+    const area = tw * th;
+    if (!best || area > best.area) best = { cols: c, rows: r, area };
+  }
+  return best;
+}
+
+let refitTimer = null;
+addEventListener('resize', () => {
+  clearTimeout(refitTimer);
+  refitTimer = setTimeout(() => render(LAST), 80);
+});
 function render(d) {
   if (!d) return;
   LAST = d;
@@ -588,10 +612,14 @@ function render(d) {
 
   if (layout === 'cluster' && cluster.length >= 2) {
     // An instrument cluster: the same face repeated, one reading per tile.
+    // The grid's shape comes from the window's shape - a tall window stacks
+    // the tiles, a wide one lines them up - so the tiles are always as big as
+    // the window allows, however it's been dragged.
     const n = cluster.length;
-    const cols = n <= 4 ? 2 : n <= 6 ? 3 : 4;
+    const { cols, rows } = bestGrid(n, stage.clientWidth - 10, stage.clientHeight - 10);
     stage.className = 'cluster';
     stage.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    stage.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
     stage.innerHTML = cluster.map((id, i) => {
       const M = METRICS.find(x => x.id === id);
       return `<div class="tile" data-i="${i}" title="${esc(M ? M.name : id)} - click to change this tile">
@@ -602,6 +630,7 @@ function render(d) {
     const m = reading(d);
     stage.className = '';
     stage.style.gridTemplateColumns = '';
+    stage.style.gridTemplateRows = '';
     stage.innerHTML = `<svg ${VB} xmlns="http://www.w3.org/2000/svg">${draw(m)}</svg>`;
     stage.title = `${S.name} - ${m.label}\nClick to change the reading, the circle button for the face.`;
   }
@@ -741,11 +770,17 @@ function save(patch) {
                          body: JSON.stringify(patch) }).catch(() => {});
 }
 
-let es, gotPrefs = false;
+let es, gotPrefs = false, bootSeen = null;
 function connect() {
   es = new EventSource('/api/stream?mini=1');
   es.onmessage = ev => {
     let d; try { d = JSON.parse(ev.data); } catch { return; }
+    // The server stamps every frame with when it booted. A new stamp means it
+    // restarted - usually after an update - and this page is running old code.
+    if (d.boot) {
+      if (bootSeen && d.boot !== bootSeen) { location.reload(); return; }
+      bootSeen = d.boot;
+    }
     if (!gotPrefs) {                       // adopt saved preferences on first frame
       gotPrefs = true;
       if (d.skin && SKINS.some(s => s.id === d.skin)) skin = d.skin;

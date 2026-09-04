@@ -1,9 +1,9 @@
 {
-  "version": "1.4.1",
-  "notes": "Gauge and dashboard shortcuts now hand off to the running instance, so a shortcut-launched gauge parks in its corner and opens at the size its layout needs.",
-  "published": "2026-09-04T04:45:56.740Z",
+  "version": "1.4.2",
+  "notes": "Cluster tiles now fill the window whatever shape you drag it to; open gauge and dashboard pages reload themselves after an update or restart; window resize no longer capped at 900px tall.",
+  "published": "2026-09-04T04:51:37.014Z",
   "files": {
-    "server.js": "6c7b383c4144c91045efb0c6bd5c4cb619418647a030d1a4481b7c88aac798eb",
+    "server.js": "a4f8d98c2cb6f8d78dc0ab832196cf42b339b1877fc6c625c0ada9d8290e7082",
     "statusline.js": "e4b2ae9eee10d3573616ce8cc1f3d0afcbd2052a6911ed9a927ce975b1c1f2d7",
     "install.js": "a02224b69580d43a461cacc40d595e1a4f8905e38ccf074da83307748ea183f2",
     "install-desktop.js": "6e338187187e1d597da651a75e147434505ee70c332e2633e09a736894332747",
@@ -12,22 +12,22 @@
     "update.js": "b6efbcc9a47f9afe075c1984711ee065460ba556c7fead6ae9a1405fd114d74d",
     "seed-demo.js": "50d20f4eca372dc91fbdc43d585ec92bc22210b9bad925afd86f05e405de1a65",
     "pricing.json": "b76c15de3ed000b4f000a2ad1b0426b96929cce65706adf9eb467ff9949870aa",
-    "package.json": "0f78ae900cbac8257278a0873f2695171ef232459e418924f169efaa8f58b9df",
-    "README.md": "4cdbb1d0a8ff5242e955af2804ba2fed6e7449d4f212de811f2b7d4e60c1942e",
+    "package.json": "6ac5f2aac9d7c69e632aa6fd7f5698305347f2df889a78099e56832e9b41214b",
+    "README.md": "b60d92aa7f34bc6ebc37295f8646ddbd485590b827cb5431bca8b5863ea716f1",
     "LICENSE": "2184b88812412804e1cef2848a1d170ff7288b374d354e012bc4ef5f9389f47c",
     "install.ps1": "bde83f15c5ad2a1a99e64a668c4b7f876a99e4517d91f59c6e99eb5c18f91993",
     "install.sh": "52e2e1e1b83ab4f80d0a1ab95e052dd98f5b469d62ece36b36b39812734d1805",
-    "public/app.js": "3c67c803005c5c4c4e7787aacfc24011c260da03c9ac502c03a00eb2ee6fa45d",
+    "public/app.js": "a45e4d4f7006b8902415368f0b3c034aefcd6a31889a735b3181ceba1adf0bd5",
     "public/icon.png": "5fb9ba83cb57008b97fff3ba910a40e4a993859fd58ac47245fc22a7cc41f94a",
     "public/icon.svg": "e1b02e53c1cad9b675d4a2a4af1f95d5997dbf8204359ad84a422189e65093ee",
     "public/index.html": "6843f861103b00169e83e3de55418305c66f81123293b516ca03070c778f9c0f",
-    "public/mini.html": "51ef09960b661451ac27d5df6f8f6bd3c1a750c1a3fe5f9eea96d19df58a0d71",
+    "public/mini.html": "eda797a970c2086963ee3817ee50bb9a4d82bb407358c04540e14d7ba5d194d7",
     "public/style.css": "1b19fbbdac970d5eabb70cfae39f36ef3ea0b1b41e85d3ed7eeb8854d5bca63d",
     "desktop/autostart.vbs": "2df7700d837f2a3ac66ecf952e5bf1f9d0d0492fec20d9c87cb7141270cf30b9",
     "desktop/burnmeter.ico": "3ea281c506acedd114165e422aee5555f64d00d5f3502559801da57b03778b75",
     "desktop/burnmeter.vbs": "ce5f87b9d79d4c161d66ea50ddcfc5af58de2cf3afaa3aea2f852c1026a72aec",
     "desktop/gauge.vbs": "cc6514cd8226a94a2193dc601fc9fd94351a516c543ec052c964d5c284891a7d",
     "desktop/server-only.vbs": "e9328a54723cb15b50781e61733f03bf8ebd0438a87a5c16f43c6c8707398e92",
-    "desktop/window.ps1": "fd7f0e6392a25c585d15c7ff6676061188acd7f5026c8790ce94d9c6f49f0686"
+    "desktop/window.ps1": "114c2da3f67d251fa25ba35b437993a1188dbfb428bd64c24a74daafc1891df6"
   }
 }

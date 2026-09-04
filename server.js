@@ -38,6 +38,9 @@ const DESKTOP_D  = path.join(APP_DIR, 'desktop');
 // statusline.js drops the real subscription rate-limit numbers here.
 const LIMITS_F   = path.join(APP_DIR, 'limits.json');
 
+/** Stamped on every frame so open pages notice a restart and reload. */
+const BOOT_AT = Date.now();
+
 const VERSION = (() => {
   try { return JSON.parse(fs.readFileSync(path.join(APP_DIR, 'package.json'), 'utf8')).version || '0.0.0'; }
   catch { return '0.0.0'; }
@@ -1054,6 +1057,7 @@ function buildState() {
 
   return {
     now,
+    boot: BOOT_AT,
     version: VERSION,
     update: updateState,
     plan:  { name: CONFIG.planName, monthlyUsd: fee },
@@ -1153,6 +1157,7 @@ function buildMini() {
 
   return {
     now,
+    boot: BOOT_AT,
     rate: sumRange(now - nw).cost / (nw / 36e5),
     burst: sumRange(now - 60e3).cost * 60,
     today: today.cost,
@@ -1359,18 +1364,23 @@ const server = http.createServer(async (req, res) => {
       action = j.on !== false ? 'top' : 'untop';
       CONFIG.miniOnTop = j.on !== false; saveConfig(CONFIG);
     }
-    if (!['top', 'untop', 'size', 'corner', 'state'].includes(action))
+    if (!['top', 'untop', 'size', 'corner', 'move', 'state'].includes(action))
       return json(res, { ok: false, reason: 'unknown action' }, 400);
 
     const argv = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
                   '-Title', 'BurnMeter Gauge', '-Action', action];
     if (action === 'size') {
-      const w = Math.round(Math.min(1200, Math.max(200, Number(j.width) || 380)));
-      const h = Math.round(Math.min(900, Math.max(80, Number(j.height) || 196)));
+      const w = Math.round(Math.min(8000, Math.max(200, Number(j.width) || 380)));
+      const h = Math.round(Math.min(5000, Math.max(80, Number(j.height) || 196)));
       argv.push('-Width', String(w), '-Height', String(h));
       CONFIG.miniScale = w / 380; saveConfig(CONFIG);
     }
     if (action === 'corner') argv.push('-Corner', ['TL', 'TR', 'BL', 'BR'].includes(j.corner) ? j.corner : 'BR');
+    if (action === 'move') {
+      const x = Math.round(Math.min(20000, Math.max(-20000, Number(j.x) || 0)));
+      const y = Math.round(Math.min(20000, Math.max(-20000, Number(j.y) || 0)));
+      argv.push('-X', String(x), '-Y', String(y));
+    }
 
     execFile('powershell.exe', argv, { timeout: 10000, windowsHide: true }, (err, stdout) => {
       const out = String(stdout || '').trim();

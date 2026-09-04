@@ -12,13 +12,16 @@
     -Action untop    release it
     -Action size     resize to -Width x -Height (keeps position)
     -Action corner   park it in -Corner (TL/TR/BL/BR) of its current monitor
+    -Action move     put its top-left at -X,-Y (keeps size)
     -Action state    report current size, position and topmost flag
 
   Prints "ok <n>" on success, "not-found" when no matching window is open.
 #>
 param(
   [string]$Title = 'BurnMeter Gauge',
-  [ValidateSet('top','untop','size','corner','state')][string]$Action = 'state',
+  [ValidateSet('top','untop','size','corner','move','state')][string]$Action = 'state',
+  [int]$X = 0,
+  [int]$Y = 0,
   [int]$Width = 380,
   [int]$Height = 196,
   [ValidateSet('TL','TR','BL','BR')][string]$Corner = 'BR',
@@ -91,8 +94,12 @@ foreach ($h in $windows) {
     'size' {
       $r = New-Object BurnMeterWin+RECT
       [void][BurnMeterWin]::GetWindowRect($h, [ref]$r)
-      # Keep the window fully on its monitor after growing.
+      # Keep the window fully on its monitor after growing. Chromium refuses a
+      # programmatic size that does not fit the work area - and falls back to
+      # an arbitrary one - so clamp the request to what can actually be granted.
       $scr = [System.Windows.Forms.Screen]::FromHandle($h).WorkingArea
+      $Width  = [Math]::Min($Width,  $scr.Width  - $Margin)
+      $Height = [Math]::Min($Height, $scr.Height - $Margin)
       $x = [Math]::Min($r.L, $scr.Right  - $Width  - $Margin)
       $y = [Math]::Min($r.T, $scr.Bottom - $Height - $Margin)
       $x = [Math]::Max($x, $scr.Left); $y = [Math]::Max($y, $scr.Top)
@@ -111,6 +118,10 @@ foreach ($h in $windows) {
         default { $x = $scr.Right - $w - $Margin;        $y = $scr.Bottom - $hh - $Margin }
       }
       [void][BurnMeterWin]::SetWindowPos($h, [IntPtr]::Zero, $x, $y, 0, 0, ($SWP_NOSIZE -bor $SWP_NOZORDER -bor $SWP_NOACTIVATE))
+    }
+
+    'move' {
+      [void][BurnMeterWin]::SetWindowPos($h, [IntPtr]::Zero, $X, $Y, 0, 0, ($SWP_NOSIZE -bor $SWP_NOZORDER -bor $SWP_NOACTIVATE))
     }
 
     'state' {
