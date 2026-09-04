@@ -16,7 +16,7 @@ body{
   -webkit-font-smoothing:antialiased; user-select:none; cursor:default;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
 }
-#confetti{position:fixed;inset:0;z-index:1;pointer-events:none}
+#confetti{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
 .stage{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:1px}
 
 h1{
@@ -32,32 +32,38 @@ h1{
 
 /* Each part swings on its own pivot; the whole figure bounces on the beat.
    0.48s a cycle is 125bpm, which is about right for a celebration. */
-.beat  {animation:beat .48s ease-in-out infinite}
-.hips  {animation:hips .96s ease-in-out infinite; transform-origin:120px 156px}
-.armL  {animation:armL .48s ease-in-out infinite; transform-origin:101px 104px}
-.armR  {animation:armR .48s ease-in-out infinite; transform-origin:139px 104px}
-.legL  {animation:legL .96s ease-in-out infinite; transform-origin:112px 186px}
-.legR  {animation:legR .96s ease-in-out infinite; transform-origin:128px 186px}
-.head  {animation:head .96s ease-in-out infinite; transform-origin:120px 88px}
-.strandL{animation:strandL .96s ease-in-out infinite; transform-origin:99px 46px}
-.strandR{animation:strandR .96s ease-in-out infinite; transform-origin:141px 46px}
-.blink {animation:blink 4.2s infinite}
-.note  {animation:note 2.1s linear infinite; opacity:0}
-.note2 {animation:note 2.1s .95s linear infinite; opacity:0}
+.beat   {animation:beat .48s ease-in-out infinite}
+.hips   {animation:hips .96s ease-in-out infinite; transform-origin:120px 165px}
+.armL   {animation:armL .96s ease-in-out infinite; transform-origin:99px 98px}
+.armR   {animation:armR .96s ease-in-out infinite; transform-origin:141px 98px}
+.legL   {animation:legL .96s ease-in-out infinite; transform-origin:112px 196px}
+.legR   {animation:legR .96s ease-in-out infinite; transform-origin:128px 196px}
+.head   {animation:head .96s ease-in-out infinite; transform-origin:120px 74px}
+.tail   {animation:tail .96s ease-in-out infinite; transform-origin:136px 24px}
+.tailTip{animation:tailTip .96s ease-in-out .08s infinite; transform-origin:168px 60px}
+.lockL  {animation:lockL .96s ease-in-out infinite; transform-origin:97px 40px}
+.lockR  {animation:lockR .96s ease-in-out infinite; transform-origin:143px 40px}
+.skirt  {animation:skirt .96s ease-in-out infinite; transform-origin:120px 170px}
+.blink  {animation:blink 4.6s infinite}
+.note   {animation:note 2.1s linear infinite; opacity:0}
+.note2  {animation:note 2.1s .95s linear infinite; opacity:0}
 
-@keyframes beat   {0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-@keyframes hips   {0%,100%{transform:rotate(-3.5deg)}50%{transform:rotate(3.5deg)}}
-@keyframes head   {0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
-@keyframes armL   {0%,100%{transform:rotate(24deg)}50%{transform:rotate(-96deg)}}
-@keyframes armR   {0%,100%{transform:rotate(-96deg)}50%{transform:rotate(24deg)}}
-@keyframes legL   {0%,100%{transform:rotate(6deg)}50%{transform:rotate(-7deg)}}
-@keyframes legR   {0%,100%{transform:rotate(-6deg)}50%{transform:rotate(7deg)}}
-@keyframes strandL{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(10deg)}}
-@keyframes strandR{0%,100%{transform:rotate(9deg)}50%{transform:rotate(-10deg)}}
-@keyframes blink  {0%,96%,100%{transform:scaleY(1)}98%{transform:scaleY(.08)}}
-@keyframes note   {0%{opacity:0;transform:translate(0,0) rotate(0)}
-                   15%{opacity:1}
-                   100%{opacity:0;transform:translate(24px,-56px) rotate(22deg)}}
+@keyframes beat    {0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes hips    {0%,100%{transform:rotate(-4deg) translateX(-2px)}50%{transform:rotate(4deg) translateX(2px)}}
+@keyframes head    {0%,100%{transform:rotate(4deg)}50%{transform:rotate(-4deg)}}
+@keyframes armL    {0%,100%{transform:rotate(-8deg)}50%{transform:rotate(10deg)}}
+@keyframes armR    {0%,100%{transform:rotate(8deg)}50%{transform:rotate(-10deg)}}
+@keyframes legL    {0%,100%{transform:rotate(3deg)}50%{transform:rotate(-4deg)}}
+@keyframes legR    {0%,100%{transform:rotate(-3deg)}50%{transform:rotate(4deg)}}
+@keyframes tail    {0%,100%{transform:rotate(-7deg)}50%{transform:rotate(8deg)}}
+@keyframes tailTip {0%,100%{transform:rotate(-9deg)}50%{transform:rotate(11deg)}}
+@keyframes lockL   {0%,100%{transform:rotate(-4deg)}50%{transform:rotate(5deg)}}
+@keyframes lockR   {0%,100%{transform:rotate(4deg)}50%{transform:rotate(-5deg)}}
+@keyframes skirt   {0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+@keyframes blink   {0%,96%,100%{transform:scaleY(1)}98%{transform:scaleY(.08)}}
+@keyframes note    {0%{opacity:0;transform:translate(0,0) rotate(0)}
+                    15%{opacity:1}
+                    100%{opacity:0;transform:translate(24px,-56px) rotate(22deg)}}
 
 .foot{position:fixed;bottom:9px;left:0;right:0;z-index:3;text-align:center;font-size:11.5px;color:#6f6d66}
 .foot b{color:#a9a7a0;font-variant-numeric:tabular-nums}
@@ -76,104 +82,169 @@ h1{
   <h1 id="title">CAPACITY IS BACK</h1>
   <div class="sub" id="sub">go go go</div>
 
-  <!-- Original artwork, drawn here rather than borrowed from anywhere. -->
-  <svg id="dancer" viewBox="0 0 240 268" role="img" aria-label="a figure dancing">
+  <!-- Original artwork: drawn here, not borrowed from anywhere. -->
+  <svg id="dancer" viewBox="0 0 240 316" role="img" aria-label="a figure dancing">
     <defs>
-      <linearGradient id="hair" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#c08cf0"/><stop offset="1" stop-color="#6f42a8"/>
+      <linearGradient id="hairDark" x1="0" y1="0" x2="0.3" y2="1">
+        <stop offset="0" stop-color="#3a2b45"/><stop offset="0.55" stop-color="#221a2c"/>
+        <stop offset="1" stop-color="#17111f"/>
       </linearGradient>
-      <linearGradient id="blazer" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="#5b3a74"/><stop offset="1" stop-color="#3d2450"/>
+      <linearGradient id="hairPink" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ff8fd0"/><stop offset="1" stop-color="#d13c8e"/>
       </linearGradient>
-      <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-        <stop offset="0" stop-color="#c98bff" stop-opacity=".3"/>
-        <stop offset="1" stop-color="#c98bff" stop-opacity="0"/>
+      <linearGradient id="cloth" x1="0.2" y1="0" x2="0.8" y2="1">
+        <stop offset="0" stop-color="#2e2536"/><stop offset="0.5" stop-color="#191220"/>
+        <stop offset="1" stop-color="#241a2e"/>
+      </linearGradient>
+      <linearGradient id="skin" x1="0" y1="0" x2="0.4" y2="1">
+        <stop offset="0" stop-color="#ffe2cd"/><stop offset="1" stop-color="#f0c4a6"/>
+      </linearGradient>
+      <radialGradient id="iris" cx="50%" cy="35%" r="70%">
+        <stop offset="0" stop-color="#c9a4ff"/><stop offset="0.6" stop-color="#7b4fd0"/>
+        <stop offset="1" stop-color="#3d2168"/>
       </radialGradient>
+      <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+        <stop offset="0" stop-color="#ff8fd0" stop-opacity=".26"/>
+        <stop offset="1" stop-color="#ff8fd0" stop-opacity="0"/>
+      </radialGradient>
+      <!-- one blossom, reused as embroidery -->
+      <g id="sakura">
+        <g fill="#ff7ab8">
+          <ellipse cx="0" cy="-3.1" rx="1.7" ry="2.7"/>
+          <ellipse cx="2.9" cy="-0.9" rx="1.7" ry="2.7" transform="rotate(72)"/>
+          <ellipse cx="1.8" cy="2.5" rx="1.7" ry="2.7" transform="rotate(144)"/>
+          <ellipse cx="-1.8" cy="2.5" rx="1.7" ry="2.7" transform="rotate(216)"/>
+          <ellipse cx="-2.9" cy="-0.9" rx="1.7" ry="2.7" transform="rotate(288)"/>
+        </g>
+        <circle r="0.9" fill="#ffd7ec"/>
+      </g>
     </defs>
 
-    <ellipse cx="120" cy="252" rx="44" ry="7.5" fill="#000" opacity=".38"/>
-    <circle cx="120" cy="130" r="104" fill="url(#glow)"/>
+    <ellipse cx="120" cy="302" rx="42" ry="7" fill="#000" opacity=".4"/>
+    <circle cx="120" cy="150" r="118" fill="url(#glow)"/>
 
     <g class="beat">
+
+      <!-- ponytail, behind everything -->
+      <g class="tail">
+        <path d="M134 20 q34 6 44 34 q8 26 -6 50 q-6 10 -14 16 q10 -26 4 -50 q-6 -26 -32 -38 z" fill="url(#hairDark)"/>
+        <path d="M140 26 q26 10 32 32 q5 20 -3 38 q3 -22 -6 -38 q-9 -19 -27 -26 z" fill="url(#hairPink)" opacity=".85"/>
+        <g class="tailTip">
+          <path d="M170 96 q10 30 -2 60 q-6 14 -16 22 q12 -30 8 -54 q-2 -16 -8 -26 z" fill="url(#hairDark)"/>
+          <path d="M168 104 q7 26 -1 48 q-3 10 -9 17 q7 -24 5 -43 q-1 -13 -5 -20 z" fill="url(#hairPink)" opacity=".7"/>
+        </g>
+      </g>
+
       <!-- legs -->
       <g class="legL">
-        <path d="M107 184 q-2 26 0 48" stroke="#e0bda0" stroke-width="11" stroke-linecap="round" fill="none"/>
-        <path d="M101 232 h13 l3 8 h-19 z" fill="#2b1f38"/>
+        <path d="M112 192 q-4 40 -2 76 q1 14 0 24" stroke="url(#skin)" stroke-width="15" stroke-linecap="round" fill="none"/>
+        <path d="M104 292 q7 -4 14 0 l1 9 h-16 z" fill="#1d1526"/>
       </g>
       <g class="legR">
-        <path d="M133 184 q2 26 0 48" stroke="#e0bda0" stroke-width="11" stroke-linecap="round" fill="none"/>
-        <path d="M126 232 h13 l3 8 h-19 z" fill="#2b1f38"/>
+        <path d="M128 192 q4 40 2 76 q-1 14 0 24" stroke="url(#skin)" stroke-width="15" stroke-linecap="round" fill="none"/>
+        <path d="M122 292 q7 -4 14 0 l1 9 h-16 z" fill="#1d1526"/>
       </g>
 
       <g class="hips">
-        <!-- pencil skirt -->
-        <path d="M100 150 h40 l4 40 h-48 z" fill="#33204a"/>
-        <path d="M100 150 h40 l1 8 h-42 z" fill="#251636"/>
+        <!-- pleated skirt -->
+        <g class="skirt">
+          <path d="M96 166 h48 l9 32 h-66 z" fill="url(#cloth)"/>
+          <g stroke="#3a2c46" stroke-width="1.4">
+            <path d="M105 168 l-3 30"/><path d="M114 168 l-1 30"/>
+            <path d="M126 168 l1 30"/><path d="M135 168 l3 30"/>
+          </g>
+          <path d="M87 198 h66 l1 4 h-68 z" fill="#120d18"/>
+          <!-- tassel -->
+          <path d="M120 172 v22" stroke="#c9a227" stroke-width="1.6"/>
+          <circle cx="120" cy="196" r="3" fill="#e0b736"/>
+          <path d="M117 199 q3 12 6 0 z" fill="#e0559e"/>
+          <path d="M118 199 v11 M120 199 v13 M122 199 v11" stroke="#e0559e" stroke-width="1.2"/>
+        </g>
+        <!-- belt -->
+        <path d="M95 156 h50 v11 h-50 z" fill="#2a2130"/>
+        <path d="M112 155 h16 v13 h-16 z" fill="#c9a227"/>
+        <path d="M115 158 h10 v7 h-10 z" fill="#1d1526"/>
       </g>
 
       <!-- arms -->
       <g class="armL">
-        <path d="M101 104 q-9 22 -6 42" stroke="url(#blazer)" stroke-width="12" stroke-linecap="round" fill="none"/>
-        <path d="M95 138 q-2 8 -1 14" stroke="#e0bda0" stroke-width="9" stroke-linecap="round" fill="none"/>
-        <circle cx="94" cy="156" r="6" fill="#e0bda0"/>
+        <path d="M99 98 q-12 24 -8 44" stroke="url(#cloth)" stroke-width="13" stroke-linecap="round" fill="none"/>
+        <use href="#sakura" x="93" y="118" transform="scale(.9) translate(10 12)"/>
+        <path d="M91 140 q-2 10 2 17" stroke="url(#cloth)" stroke-width="12" stroke-linecap="round" fill="none"/>
+        <circle cx="94" cy="160" r="6.5" fill="url(#skin)"/>
       </g>
       <g class="armR">
-        <path d="M139 104 q9 22 6 42" stroke="url(#blazer)" stroke-width="12" stroke-linecap="round" fill="none"/>
-        <path d="M145 138 q2 8 1 14" stroke="#e0bda0" stroke-width="9" stroke-linecap="round" fill="none"/>
-        <circle cx="146" cy="156" r="6" fill="#e0bda0"/>
+        <!-- raised, hand near the cheek -->
+        <path d="M141 98 q16 -12 18 -30" stroke="url(#cloth)" stroke-width="13" stroke-linecap="round" fill="none"/>
+        <use href="#sakura" x="0" y="0" transform="translate(152 82)"/>
+        <path d="M159 68 q-4 -12 -12 -18" stroke="url(#cloth)" stroke-width="12" stroke-linecap="round" fill="none"/>
+        <circle cx="145" cy="48" r="7" fill="url(#skin)"/>
+        <path d="M141 44 q4 -7 9 -3" stroke="#e8b79a" stroke-width="1.6" fill="none" stroke-linecap="round"/>
       </g>
 
-      <!-- blouse + blazer -->
-      <path d="M104 98 h32 l6 54 h-44 z" fill="#f2e9dc"/>
-      <path d="M101 97 q19 -6 38 0 l5 55 h-14 l-9 -46 -9 46 h-16 z" fill="url(#blazer)"/>
-      <path d="M112 97 l8 20 l8 -20 q-8 -3 -16 0 z" fill="#e8dccb"/>
-      <circle cx="120" cy="128" r="3.2" fill="#ffd166"/>
+      <!-- torso: fitted high-neck top with blossom embroidery -->
+      <path d="M102 90 q18 -5 36 0 l7 66 h-50 z" fill="url(#cloth)"/>
+      <path d="M102 90 q18 -5 36 0 l1 8 q-19 -5 -38 0 z" fill="#332839"/>
+      <path d="M120 96 v58" stroke="#3a2c46" stroke-width="1.2"/>
+      <g opacity=".95">
+        <use href="#sakura" transform="translate(108 112)"/>
+        <use href="#sakura" transform="translate(133 124) scale(.85)"/>
+        <use href="#sakura" transform="translate(112 140) scale(.8)"/>
+        <use href="#sakura" transform="translate(129 100) scale(.7)"/>
+      </g>
+      <!-- collar -->
+      <path d="M111 86 h18 v7 q-9 3 -18 0 z" fill="#241a2e"/>
+      <path d="M111 86 h18 v2 h-18 z" fill="#e0559e"/>
 
       <!-- neck -->
-      <path d="M114 84 h12 v12 q-6 4 -12 0 z" fill="#d9b195"/>
+      <path d="M114 74 h12 v13 q-6 4 -12 0 z" fill="#f0c4a6"/>
 
       <g class="head">
-        <!-- bun, behind -->
-        <circle cx="120" cy="30" r="15" fill="#6f42a8"/>
-        <circle cx="120" cy="30" r="15" fill="url(#hair)" opacity=".55"/>
-        <!-- loose strands framing the face -->
-        <g class="strandL"><path d="M99 46 q-11 26 -5 48 q6 -14 11 -22 q-6 -14 -6 -26 z" fill="url(#hair)"/></g>
-        <g class="strandR"><path d="M141 46 q11 26 5 48 q-6 -14 -11 -22 q6 -14 6 -26 z" fill="url(#hair)"/></g>
-
         <!-- face -->
-        <ellipse cx="120" cy="62" rx="24" ry="27" fill="#e8c9ad"/>
-        <!-- swept-back hair -->
-        <path d="M96 58 q2 -30 24 -30 q22 0 24 30 q2 -20 -6 -28 q-8 -8 -18 -8 q-10 0 -18 8 q-8 8 -6 28 z" fill="url(#hair)"/>
-        <path d="M96 58 q4 -22 24 -22 q20 0 24 22 q-6 -14 -24 -14 q-18 0 -24 14 z" fill="#8b5cc0"/>
+        <ellipse cx="120" cy="48" rx="24" ry="27" fill="url(#skin)"/>
+        <!-- side locks -->
+        <g class="lockL"><path d="M97 40 q-7 26 -3 44 q6 -12 10 -18 q-6 -12 -7 -26 z" fill="url(#hairDark)"/>
+          <path d="M99 46 q-4 20 -1 32 q3 -12 6 -17 q-4 -8 -5 -15 z" fill="url(#hairPink)" opacity=".8"/></g>
+        <g class="lockR"><path d="M143 40 q7 26 3 44 q-6 -12 -10 -18 q6 -12 7 -26 z" fill="url(#hairDark)"/>
+          <path d="M141 46 q4 20 1 32 q-3 -12 -6 -17 q4 -8 5 -15 z" fill="url(#hairPink)" opacity=".8"/></g>
 
-        <!-- glasses -->
-        <rect x="103" y="57" width="16" height="12" rx="3.5" fill="#ffffff" opacity=".14"
-              stroke="#2f2438" stroke-width="2"/>
-        <rect x="121" y="57" width="16" height="12" rx="3.5" fill="#ffffff" opacity=".14"
-              stroke="#2f2438" stroke-width="2"/>
-        <path d="M119 63 h2" stroke="#2f2438" stroke-width="2"/>
-        <path d="M103 61 l-6 -2 M137 61 l6 -2" stroke="#2f2438" stroke-width="2" stroke-linecap="round"/>
+        <!-- bangs: spiky, parted -->
+        <path d="M95 44 q0 -30 25 -30 q25 0 25 30 q-3 -16 -10 -21
+                 l-4 15 l-5 -17 l-6 18 l-5 -16 l-6 14 l-5 -13 q-7 6 -9 20 z" fill="url(#hairDark)"/>
+        <path d="M112 15 q14 -3 22 10 q-4 12 -8 14 l-3 -13 l-5 15 l-6 -16 z" fill="url(#hairPink)" opacity=".55"/>
+        <!-- scrunchie -->
+        <ellipse cx="136" cy="22" rx="8" ry="6" fill="#e0559e"/>
+        <ellipse cx="136" cy="22" rx="4.5" ry="3" fill="#ff9ed4"/>
 
-        <!-- eyes -->
-        <g class="blink" style="transform-origin:111px 63px">
-          <ellipse cx="111" cy="63" rx="3.4" ry="4.2" fill="#2b2233"/>
-          <circle cx="112.2" cy="61.6" r="1.3" fill="#fff"/>
+        <!-- brows -->
+        <path d="M105 39 q6 -3 11 -1" stroke="#3b2b48" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M124 38 q5 -2 11 1" stroke="#3b2b48" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+        <!-- left eye, open -->
+        <g class="blink" style="transform-origin:110px 52px">
+          <ellipse cx="110" cy="52" rx="6.4" ry="8" fill="#fff"/>
+          <ellipse cx="110" cy="53" rx="5.2" ry="7" fill="url(#iris)"/>
+          <ellipse cx="110" cy="53.5" rx="2.4" ry="3.6" fill="#180f22"/>
+          <circle cx="112" cy="49" r="2.3" fill="#fff"/>
+          <circle cx="108" cy="56" r="1.2" fill="#fff" opacity=".75"/>
+          <path d="M103 46 q7 -4 14 1" stroke="#241629" stroke-width="3" fill="none" stroke-linecap="round"/>
         </g>
-        <g class="blink" style="transform-origin:129px 63px">
-          <ellipse cx="129" cy="63" rx="3.4" ry="4.2" fill="#2b2233"/>
-          <circle cx="130.2" cy="61.6" r="1.3" fill="#fff"/>
-        </g>
-        <path d="M106 55 q5 -3 10 -1 M124 54 q5 -2 10 1" stroke="#5b3a74" stroke-width="1.8"
-              fill="none" stroke-linecap="round"/>
-        <ellipse cx="102" cy="72" rx="4.5" ry="2.6" fill="#e08fa8" opacity=".45"/>
-        <ellipse cx="138" cy="72" rx="4.5" ry="2.6" fill="#e08fa8" opacity=".45"/>
-        <path d="M115 77 q5 5 10 0" stroke="#a8446b" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-        <circle cx="97" cy="66" r="2.2" fill="#ffd166"/>
-        <circle cx="143" cy="66" r="2.2" fill="#ffd166"/>
+        <!-- right eye, winking -->
+        <path d="M124 53 q6 -6 12 0" stroke="#241629" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <path d="M135 49 l4 -3 M136 53 l5 0" stroke="#241629" stroke-width="1.8" stroke-linecap="round"/>
+
+        <!-- blush + smile -->
+        <ellipse cx="101" cy="60" rx="5.5" ry="3" fill="#ff7ab8" opacity=".45"/>
+        <ellipse cx="139" cy="60" rx="5.5" ry="3" fill="#ff7ab8" opacity=".45"/>
+        <path d="M114 64 q6 7 12 0 q-6 3 -12 0 z" fill="#8e2b52"/>
+        <path d="M114 64 q6 7 12 0" stroke="#8e2b52" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+        <path d="M116 65.5 q4 2 8 0" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        <!-- earring -->
+        <circle cx="97" cy="56" r="1.8" fill="#e0b736"/>
       </g>
 
-      <g class="note"  fill="#ffd166"><circle cx="170" cy="112" r="4"/><rect x="173" y="96" width="2.2" height="17"/></g>
-      <g class="note2" fill="#8ecae6"><circle cx="62" cy="120" r="3.4"/><rect x="64.6" y="106" width="2" height="15"/></g>
+      <g class="note"  fill="#ffd166"><circle cx="186" cy="140" r="4"/><rect x="189" y="124" width="2.2" height="17"/></g>
+      <g class="note2" fill="#8ecae6"><circle cx="54" cy="150" r="3.4"/><rect x="56.6" y="136" width="2" height="15"/></g>
     </g>
   </svg>
 </div>
@@ -219,6 +290,7 @@ function burst(n, ox, oy, spread) {
       w: 5 + Math.random() * 8, h: 8 + Math.random() * 11,
       rot: Math.random() * Math.PI, vr: (Math.random() - .5) * .4,
       col: COLOURS[(Math.random() * COLOURS.length) | 0],
+      petal: Math.random() < 0.28,          // a third of it is blossom
       wob: Math.random() * Math.PI * 2
     });
   }
@@ -234,8 +306,16 @@ function frame() {
     if (b.y > H + 40) { bits.splice(i, 1); continue; }
     cx.save();
     cx.translate(b.x, b.y); cx.rotate(b.rot);
-    cx.fillStyle = b.col;
-    cx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h * Math.abs(Math.cos(b.wob * .7)));
+    if (b.petal) {
+      // a sakura petal: notched at the tip, and it flutters edge-on
+      cx.fillStyle = b.pink || (b.pink = ['#ff9ed4', '#ff7ab8', '#ffd0e8'][(Math.random() * 3) | 0]);
+      cx.beginPath();
+      cx.ellipse(0, 0, b.w * 0.55 * Math.abs(Math.cos(b.wob * .7)), b.h * 0.5, 0, 0, Math.PI * 2);
+      cx.fill();
+    } else {
+      cx.fillStyle = b.col;
+      cx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h * Math.abs(Math.cos(b.wob * .7)));
+    }
     cx.restore();
   }
   requestAnimationFrame(frame);

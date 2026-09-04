@@ -1,7 +1,7 @@
 {
-  "version": "1.7.0",
-  "notes": "When a limit lifts you now get a party: confetti, a popper, a paper horn, a kazoo fanfare and a dancer, for fifteen seconds.",
-  "published": "2026-09-04T22:50:42.643Z",
+  "version": "1.7.1",
+  "notes": "Confetti now covers the whole screen instead of a box in the corner, and the dancer is redrawn.",
+  "published": "2026-09-04T22:58:30.826Z",
   "files": {
     "server.js": "e8358739007551ac801a1b1f5a366d80140f657d4d63cbfe20ffb345f9a3fac7",
     "statusline.js": "e4b2ae9eee10d3573616ce8cc1f3d0afcbd2052a6911ed9a927ce975b1c1f2d7",
@@ -12,7 +12,7 @@
     "update.js": "b6efbcc9a47f9afe075c1984711ee065460ba556c7fead6ae9a1405fd114d74d",
     "seed-demo.js": "50d20f4eca372dc91fbdc43d585ec92bc22210b9bad925afd86f05e405de1a65",
     "pricing.json": "b76c15de3ed000b4f000a2ad1b0426b96929cce65706adf9eb467ff9949870aa",
-    "package.json": "d06fc618e836c2de6ea5479380ddaae3a2eb5bf1b74cbcf3caa2980416012264",
+    "package.json": "41706e223e97ab4d97ac669ce63797a37e776a4d453295b3d93842f0923c5ba0",
     "README.md": "fac54b4a058e699f5f5d25a33e871a2753367dafcbe996cb169c876e7c3e9de9",
     "LICENSE": "2184b88812412804e1cef2848a1d170ff7288b374d354e012bc4ef5f9389f47c",
     "install.ps1": "bde83f15c5ad2a1a99e64a668c4b7f876a99e4517d91f59c6e99eb5c18f91993",
@@ -22,7 +22,7 @@
     "public/icon.svg": "e1b02e53c1cad9b675d4a2a4af1f95d5997dbf8204359ad84a422189e65093ee",
     "public/index.html": "43a46e10f01ce3c483aaa1dda630a0078f538eb129a1924dcb0870d66dbf9a36",
     "public/mini.html": "2954ada24b5834726ee264bd8fe526deb78d482474920cb5f1db19db24f15e67",
-    "public/party.html": "479e323fa8c980703396963f9bf284cecc8dbb968da2b38685a22d6e39d6a90a",
+    "public/party.html": "f2a27b5b1f518fbb88ceafa82334030f5322de58b64bdb0c3d6a5a930217d274",
     "public/style.css": "da3c24a8575788820634382c91e86fdd8cc3eff6d53ebe5b9c6f85bca0199dd3",
     "desktop/autostart.vbs": "2df7700d837f2a3ac66ecf952e5bf1f9d0d0492fec20d9c87cb7141270cf30b9",
     "desktop/burnmeter.ico": "3ea281c506acedd114165e422aee5555f64d00d5f3502559801da57b03778b75",
