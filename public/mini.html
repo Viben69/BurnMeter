@@ -63,7 +63,7 @@ body:hover #ctl,#ctl:focus-within{opacity:1}
 <div id="stage"></div>
 
 <div id="ctl">
-  <button id="bPin"  title="Keep this window on top of everything">&#128204;</button>
+  <button id="bPin"  title="Float above other windows (on by default)">&#128204;</button>
   <button id="bDown" title="Smaller">&minus;</button>
   <button id="bUp"   title="Bigger">+</button>
   <button id="bSnap" title="Park it in a screen corner (click again to cycle)">&#11154;</button>
@@ -595,6 +595,24 @@ addEventListener('resize', () => {
   clearTimeout(refitTimer);
   refitTimer = setTimeout(() => render(LAST), 80);
 });
+
+/*
+ * Remember where this window is, so it reopens here.
+ *
+ * There is no 'move' event for a window, so poll: comparing four integers
+ * every two seconds costs nothing, and only a real change is ever saved.
+ */
+let lastRect = null;
+function rememberRect() {
+  const r = { x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight };
+  if (!(r.w > 160 && r.h > 80)) return;                       // minimised
+  if (lastRect && r.x === lastRect.x && r.y === lastRect.y &&
+      r.w === lastRect.w && r.h === lastRect.h) return;
+  lastRect = r;
+  save({ miniRect: r });
+}
+setTimeout(rememberRect, 4000);        // after the window has settled where it opened
+setInterval(rememberRect, 2000);
 function render(d) {
   if (!d) return;
   LAST = d;
@@ -749,6 +767,7 @@ $('#bOpen').onclick = () => {
                        body: JSON.stringify({ which: 'main' }) }).catch(() => window.open('/', '_blank'));
 };
 
+let pinApplied = false;
 async function setPin(on) {
   const btn = $('#bPin');
   const r = await fetch('/api/ontop', { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -786,6 +805,10 @@ function connect() {
       if (d.skin && SKINS.some(s => s.id === d.skin)) skin = d.skin;
       if (d.metric && METRICS.some(x => x.id === d.metric)) metric = d.metric;
       if (d.layout === 'cluster' || d.layout === 'single') layout = d.layout;
+      // Re-assert always-on-top from the saved preference. Doing it here rather
+      // than on a timer in the server guarantees the OS window exists: this
+      // code is running inside it.
+      if (d.onTop && !pinApplied) { pinApplied = true; setPin(true); }
       if (Array.isArray(d.cluster)) {
         const ok = d.cluster.filter(id => METRICS.some(x => x.id === id));
         if (ok.length >= 2) cluster = ok.slice(0, 8);

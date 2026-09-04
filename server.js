@@ -63,7 +63,17 @@ const DEFAULT_CONFIG = {
   miniScale: 1,
   miniMetric: 'rate',
   miniSkin: 'dial',
-  miniOnTop: false,
+  // A gauge you have to go looking for is not a gauge. It floats above other
+  // windows by default; the pin button turns that off.
+  miniOnTop: true,
+  // Cleared until the flip below has happened once. It must default to false:
+  // a default of true would pre-satisfy its own check, via the spread in
+  // loadConfig, and the migration would never run.
+  miniOnTopDefaulted: false,
+  // Where the gauge was last seen: {x, y, w, h} of the OS window, reported by
+  // the page. Restored on the next open, so it reappears where you left it
+  // instead of wherever the browser feels like putting it.
+  miniRect: null,
   // 'single' shows one reading and cycles; 'cluster' shows several at once,
   // like an instrument cluster. miniCluster is the ordered list of readings.
   miniLayout: 'single',
@@ -86,6 +96,14 @@ function loadConfig() {
   let c = { ...DEFAULT_CONFIG };
   try { Object.assign(c, JSON.parse(fs.readFileSync(CONFIG_F, 'utf8'))); }
   catch { saveConfig(c); }
+  // One-time migration for configs written while the gauge opened behind other
+  // windows. Done here rather than in the installer because the one-line
+  // install ships no config.json, so the installer's migration never sees one.
+  if (!c.miniOnTopDefaulted) {
+    c.miniOnTopDefaulted = true;
+    if (c.miniOnTop === false) c.miniOnTop = true;
+    saveConfig(c);
+  }
   for (const a of process.argv.slice(2)) {
     const m = /^--([a-zA-Z]+)=(.*)$/.exec(a);
     if (!m) continue;
@@ -1193,6 +1211,7 @@ function buildMini() {
     metric: CONFIG.miniMetric,
     skin: CONFIG.miniSkin,
     layout: CONFIG.miniLayout || 'single',
+    rect: CONFIG.miniRect || null,
     cluster: CONFIG.miniCluster || ['rate', 'today', 'fivehour', 'week'],
     onTop: !!CONFIG.miniOnTop
   };
@@ -1336,6 +1355,13 @@ const server = http.createServer(async (req, res) => {
     if (typeof j.miniMetric === 'string') CONFIG.miniMetric = j.miniMetric.slice(0, 20);
     if (typeof j.miniSkin === 'string') CONFIG.miniSkin = j.miniSkin.slice(0, 20);
     if (j.miniLayout === 'single' || j.miniLayout === 'cluster') CONFIG.miniLayout = j.miniLayout;
+    if (j.miniRect && typeof j.miniRect === 'object') {
+      const n = (v, lo, hi) => Math.round(Math.min(hi, Math.max(lo, Number(v) || 0)));
+      const w = n(j.miniRect.w, 160, 8000), h = n(j.miniRect.h, 80, 5000);
+      if (w >= 160 && h >= 80) {
+        CONFIG.miniRect = { x: n(j.miniRect.x, -20000, 20000), y: n(j.miniRect.y, -20000, 20000), w, h };
+      }
+    }
     if (Array.isArray(j.miniCluster)) {
       const ids = j.miniCluster.filter(x => typeof x === 'string' && x.length <= 20).slice(0, 8);
       if (ids.length >= 2) CONFIG.miniCluster = ids;
@@ -1395,6 +1421,9 @@ const server = http.createServer(async (req, res) => {
     const j = await readBody(req);
     if (!j) return json(res, { error: 'bad json' }, 400);
     const which = j.which === 'mini' ? 'mini' : 'main';
+    // Already open? Bring it forward. Chromium will not hand us a second
+    // window for a profile it is already running, so spawning would no-op.
+    if (!j.force && await raiseWindow(which)) return json(res, { ok: true, raised: true });
     const ok = openWindow(which, j);
     return json(res, { ok });
   }
@@ -1479,17 +1508,41 @@ function winHelper(extraArgs) {
   } catch {}
 }
 
+const WINDOW_TITLE = { mini: 'BurnMeter Gauge', main: 'BurnMeter' };
+
+/** Bring an already-open window to the front. Resolves false if there isn't one. */
+function raiseWindow(which) {
+  return new Promise(resolve => {
+    if (process.platform !== 'win32') return resolve(false);
+    const script = path.join(DESKTOP_D, 'window.ps1');
+    if (!fs.existsSync(script)) return resolve(false);
+    execFile('powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
+       '-Title', WINDOW_TITLE[which] || 'BurnMeter', '-Exact', '-Action', 'raise'],
+      { timeout: 8000, windowsHide: true },
+      (err, stdout) => resolve(!err && /^ok/i.test(String(stdout).trim())));
+  });
+}
+
 /** Launch a chromeless app window — a real, movable, minimizable OS window. */
 function openWindow(which, opts = {}) {
   const base = `http://${CONFIG.host}:${CONFIG.port}`;
   const url  = which === 'mini' ? `${base}/mini` : base;
   const miniDefault = (CONFIG.miniLayout === 'cluster') ? '620,380' : '380,230';
-  const size = which === 'mini' ? (opts.size || miniDefault) : (opts.size || '1380,940');
+  const rect = which === 'mini' ? CONFIG.miniRect : null;
+  const size = which === 'mini'
+    ? (opts.size || (rect ? `${rect.w},${rect.h}` : miniDefault))
+    : (opts.size || '1380,940');
 
   if (process.platform === 'win32') {
     const exe = findBrowser();
     if (exe) {
-      const profile = path.join(APP_DIR, 'browser-profile');
+      // A profile per window. Chromium forwards a second launch to whichever
+      // process already owns the profile - it prints "Opening in existing
+      // browser session" and no new window appears - so the gauge and the
+      // dashboard sharing one profile meant that whichever opened second
+      // silently never opened at all.
+      const profile = path.join(APP_DIR, which === 'mini' ? 'browser-profile' : 'browser-profile-main');
       const args = [
         `--app=${url}`,
         `--window-size=${size}`,
@@ -1498,18 +1551,20 @@ function openWindow(which, opts = {}) {
         '--no-default-browser-check',
         '--disable-features=Translate,MediaRouter'
       ];
-      if (opts.pos) args.push(`--window-position=${opts.pos}`);
+      const pos = opts.pos || (rect ? `${rect.x},${rect.y}` : null);
+      if (pos) args.push(`--window-position=${pos}`);
       try {
         const child = require('child_process').spawn(exe, args, { detached: true, stdio: 'ignore', windowsHide: false });
         child.unref();
         // The gauge is an overlay, so park it out of the way once the window
         // exists, and restore the pin if it was left on. Best-effort: if the
         // helper isn't there the window simply opens where the browser put it.
-        if (which === 'mini') {
-          setTimeout(() => {
-            winHelper(['-Action', 'corner', '-Corner', 'BR']);
-            if (CONFIG.miniOnTop) setTimeout(() => winHelper(['-Action', 'top']), 500);
-          }, 2600);
+        // With no remembered position, park it bottom-right rather than
+        // wherever the browser chose. Always-on-top and the saved rect are
+        // handled by the page itself, which cannot fire before its own window
+        // exists - unlike a timer here.
+        if (which === 'mini' && !rect) {
+          setTimeout(() => winHelper(['-Action', 'corner', '-Corner', 'BR']), 2600);
         }
         return true;
       } catch (e) { console.error('[burnmeter] could not open window:', e.message); }

@@ -104,7 +104,7 @@ small PowerShell helper (`desktop/window.ps1`) the page calls through the server
 
 | Control | What it does |
 |---|---|
-| 📌 | real always-on-top (`WS_EX_TOPMOST`) — stays above other apps |
+| 📌 | always-on-top (`WS_EX_TOPMOST`) — **on by default**; click to let it fall behind |
 | − / + | steps through five sizes, from 240×160 up to 580×330 |
 | ⬒ | parks the window in a screen corner; click again to cycle the four |
 | ◉ | picks the gauge face and the reading |
@@ -113,6 +113,11 @@ small PowerShell helper (`desktop/window.ps1`) the page calls through the server
 Click the face itself to cycle the reading; `[` and `]` cycle the face, `l`
 flips the layout. The controls stay hidden until you hover. Double-click
 anywhere opens the dashboard.
+
+**It floats above other windows by default** — a gauge you have to go looking
+for isn't a gauge. Click 📌 to let it fall behind like a normal window; the
+choice sticks. It also reopens at the size and position you last left it, on
+whichever monitor.
 
 ### Single or cluster
 

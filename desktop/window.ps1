@@ -13,13 +13,15 @@
     -Action size     resize to -Width x -Height (keeps position)
     -Action corner   park it in -Corner (TL/TR/BL/BR) of its current monitor
     -Action move     put its top-left at -X,-Y (keeps size)
+    -Action raise     bring it to the front (and restore it if minimised)
     -Action state    report current size, position and topmost flag
 
   Prints "ok <n>" on success, "not-found" when no matching window is open.
 #>
 param(
   [string]$Title = 'BurnMeter Gauge',
-  [ValidateSet('top','untop','size','corner','move','state')][string]$Action = 'state',
+  [ValidateSet('top','untop','size','corner','move','raise','state')][string]$Action = 'state',
+  [switch]$Exact,
   [int]$X = 0,
   [int]$Y = 0,
   [int]$Width = 380,
@@ -51,8 +53,12 @@ public class BurnMeterWin {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(
       IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
 
-  public static List<IntPtr> Find(string needle, string[] procNames) {
+  public static List<IntPtr> Find(string needle, string[] procNames) { return Find(needle, procNames, false); }
+  public static List<IntPtr> Find(string needle, string[] procNames, bool exact) {
     var hits = new List<IntPtr>();
     var wanted = new HashSet<int>();
     foreach (string n in procNames) {
@@ -65,7 +71,9 @@ public class BurnMeterWin {
       if (len == 0) return true;
       var sb = new StringBuilder(len + 2);
       GetWindowText(h, sb, sb.Capacity);
-      if (sb.ToString().IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) return true;
+      string title = sb.ToString();
+      if (exact ? !title.Equals(needle, StringComparison.OrdinalIgnoreCase)
+                : title.IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) return true;
       uint pid; GetWindowThreadProcessId(h, out pid);
       if (wanted.Count > 0 && !wanted.Contains((int)pid)) return true;   // browser windows only
       hits.Add(h);
@@ -82,7 +90,7 @@ $SWP_NOSIZE = 0x0001; $SWP_NOMOVE = 0x0002; $SWP_NOACTIVATE = 0x0010
 $SWP_NOZORDER = 0x0004
 $GWL_EXSTYLE = -20; $WS_EX_TOPMOST = 0x8
 
-$windows = [BurnMeterWin]::Find($Title, @('msedge','chrome','brave','vivaldi'))
+$windows = [BurnMeterWin]::Find($Title, @('msedge','chrome','brave','vivaldi'), [bool]$Exact)
 if ($windows.Count -eq 0) { Write-Output 'not-found'; exit 1 }
 
 foreach ($h in $windows) {
@@ -122,6 +130,11 @@ foreach ($h in $windows) {
 
     'move' {
       [void][BurnMeterWin]::SetWindowPos($h, [IntPtr]::Zero, $X, $Y, 0, 0, ($SWP_NOSIZE -bor $SWP_NOZORDER -bor $SWP_NOACTIVATE))
+    }
+
+    'raise' {
+      if ([BurnMeterWin]::IsIconic($h)) { [void][BurnMeterWin]::ShowWindow($h, 9) }   # SW_RESTORE
+      [void][BurnMeterWin]::SetForegroundWindow($h)
     }
 
     'state' {
