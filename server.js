@@ -1597,13 +1597,22 @@ function boot() {
   });
   server.on('error', e => {
     if (e.code === 'EADDRINUSE') {
-      // Already running. Honour the --open switches against the live instance,
-      // then step aside. The spawned window is detached, but give it a beat to
-      // hand off before this process disappears.
+      // Already running. Hand the --open switches to the live instance rather
+      // than spawning the window ourselves: it knows the current layout, and
+      // its corner-park timer survives - ours would die with this process,
+      // which is why shortcut-launched gauges used to land at the top-left.
       console.error(`[burnmeter] port ${CONFIG.port} is busy — it's probably already running.`);
-      if (process.argv.includes('--open'))      openWindow('main');
-      if (process.argv.includes('--open-mini')) openWindow('mini');
-      setTimeout(() => process.exit(0), 400);
+      const wants = process.argv.includes('--open') ? 'main'
+                  : process.argv.includes('--open-mini') ? 'mini' : null;
+      if (!wants) return process.exit(0);
+      const body = JSON.stringify({ which: wants });
+      const req = http.request({ host: CONFIG.host, port: CONFIG.port, path: '/api/open', method: 'POST',
+                                 headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+                                 timeout: 3000 },
+        res => { res.resume(); res.on('end', () => process.exit(0)); });
+      req.on('error', () => { openWindow(wants); setTimeout(() => process.exit(0), 3500); });
+      req.on('timeout', () => { req.destroy(); openWindow(wants); setTimeout(() => process.exit(0), 3500); });
+      req.end();
       return;
     }
     throw e;

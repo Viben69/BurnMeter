@@ -1,9 +1,9 @@
 {
-  "version": "1.4.0",
-  "notes": "Cluster layout for the gauge: several readings side by side, 2 to 8 tiles. Fixes the gauge needle (was showing the exchange rate since 1.3.0), the daily chart now follows the billing period, Fable 5.1 cache-read pricing, and idle CPU is down ~80%.",
-  "published": "2026-09-03T14:04:17.986Z",
+  "version": "1.4.1",
+  "notes": "Gauge and dashboard shortcuts now hand off to the running instance, so a shortcut-launched gauge parks in its corner and opens at the size its layout needs.",
+  "published": "2026-09-04T04:45:56.740Z",
   "files": {
-    "server.js": "218d8689475a23597c39c0d0f671f93910b3039ed238148d9557e49b2f2e2ab8",
+    "server.js": "6c7b383c4144c91045efb0c6bd5c4cb619418647a030d1a4481b7c88aac798eb",
     "statusline.js": "e4b2ae9eee10d3573616ce8cc1f3d0afcbd2052a6911ed9a927ce975b1c1f2d7",
     "install.js": "a02224b69580d43a461cacc40d595e1a4f8905e38ccf074da83307748ea183f2",
     "install-desktop.js": "6e338187187e1d597da651a75e147434505ee70c332e2633e09a736894332747",
@@ -12,7 +12,7 @@
     "update.js": "b6efbcc9a47f9afe075c1984711ee065460ba556c7fead6ae9a1405fd114d74d",
     "seed-demo.js": "50d20f4eca372dc91fbdc43d585ec92bc22210b9bad925afd86f05e405de1a65",
     "pricing.json": "b76c15de3ed000b4f000a2ad1b0426b96929cce65706adf9eb467ff9949870aa",
-    "package.json": "2a003736a43d4b5a8135dbc925463c192f50a3baa6c9fcf13ed9d98c1be64986",
+    "package.json": "0f78ae900cbac8257278a0873f2695171ef232459e418924f169efaa8f58b9df",
     "README.md": "4cdbb1d0a8ff5242e955af2804ba2fed6e7449d4f212de811f2b7d4e60c1942e",
     "LICENSE": "2184b88812412804e1cef2848a1d170ff7288b374d354e012bc4ef5f9389f47c",
     "install.ps1": "bde83f15c5ad2a1a99e64a668c4b7f876a99e4517d91f59c6e99eb5c18f91993",
