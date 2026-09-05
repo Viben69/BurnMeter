@@ -94,6 +94,13 @@ const DEFAULT_CONFIG = {
   //   actual - your real share of the flat fee, allocated by usage
   //   deal   - both side by side, with the discount between them
   pricingMode: 'retail',
+  // Nudge when nothing is running and the week still has room. Off by default:
+  // this one is a nag, and a nag should be asked for.
+  idleAlert: false,
+  idleAfterMin: 20,
+  idleRepeatMin: 60,
+  quietFromHour: 23,
+  quietToHour: 8,
   // Token-max targets. 0 on either goal means "measure me against my own
   // record instead of a number I made up".
   weekTokenGoal: 0,
@@ -114,7 +121,8 @@ const DEFAULT_CONFIG = {
 const NUMERIC_KEYS = new Set(['monthlyUsd', 'port', 'lookbackDays', 'needleWindowSec', 'pollMs',
                               'miniScale', 'renewalDay', 'partySeconds',
                               'weekTokenGoal', 'blockCoverageGoal', 'earlyResetToleranceSec',
-                              'resetGraceMinutes']);
+                              'resetGraceMinutes', 'idleAfterMin', 'idleRepeatMin',
+                              'quietFromHour', 'quietToHour']);
 
 function loadConfig() {
   let c = { ...DEFAULT_CONFIG };
@@ -1379,7 +1387,12 @@ function buildState() {
       weekTokenGoal: Number(CONFIG.weekTokenGoal) || 0,
       blockCoverageGoal: Number(CONFIG.blockCoverageGoal) || 0,
       earlyResetToleranceSec: Number(CONFIG.earlyResetToleranceSec) || 60,
-      resetGraceMinutes: Number(CONFIG.resetGraceMinutes) || 30
+      resetGraceMinutes: Number(CONFIG.resetGraceMinutes) || 30,
+      idleAlert: !!CONFIG.idleAlert,
+      idleAfterMin: Number(CONFIG.idleAfterMin) || 20,
+      idleRepeatMin: Number(CONFIG.idleRepeatMin) || 60,
+      quietFromHour: Number(CONFIG.quietFromHour),
+      quietToHour: Number(CONFIG.quietToHour)
     },
     byModel:   breakdown(pStart, 'm'),
     byProject: breakdown(pStart, 'p'),
@@ -1546,6 +1559,71 @@ const clockOf = ms => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeri
 const mins = ms => ms < 60e3 ? 'under a minute'
   : ms < 36e5 ? Math.round(ms / 60e3) + ' minutes'
   : (ms / 36e5).toFixed(1) + ' hours';
+
+/*
+ * Idle while capacity is going spare.
+ *
+ * On a flat-fee plan the expensive mistake is not overspending, it is sitting
+ * still with a five-hour window open: the window expires whether or not you
+ * use it, and nothing carries over. So this watches for nothing running while
+ * there is room left against the week's target, and says so once.
+ *
+ * Deliberately opt-in, rate-limited, and silent at night. An app that nags you
+ * to work at three in the morning is not a productivity tool, it is a problem.
+ */
+let idleState = { notifiedAt: 0, wasIdle: false };
+
+/** Is `t` inside the do-not-disturb window? Handles it wrapping past midnight. */
+function inQuietHours(t) {
+  const from = Number(CONFIG.quietFromHour), to = Number(CONFIG.quietToHour);
+  if (!isFinite(from) || !isFinite(to) || from === to) return false;
+  const h = new Date(t).getHours();
+  return from < to ? (h >= from && h < to) : (h >= from || h < to);
+}
+
+function checkIdle() {
+  if (!CONFIG.idleAlert) return;
+  const now = Date.now();
+  if (inQuietHours(now)) return;
+  if (!events.length) return;
+
+  // Locked out is not idle. There is nothing to be done about it and saying
+  // so would be the most annoying possible moment to be told to work harder.
+  if (blockState().blocked) return;
+
+  if (activeSessions(ACTIVE_WINDOW_MS).length) { idleState.wasIdle = false; return; }
+
+  const idleFor = now - events[events.length - 1].t;
+  const need = Math.max(5, Number(CONFIG.idleAfterMin) || 20) * 60e3;
+  if (idleFor < need) { idleState.wasIdle = false; return; }
+
+  const gapMin = Math.max(need, (Number(CONFIG.idleRepeatMin) || 60) * 60e3);
+  if (now - idleState.notifiedAt < gapMin) return;
+
+  // Only worth interrupting for if there is headroom actually being lost.
+  const wm = weekMax();
+  const target = Number(CONFIG.weekTokenGoal) || wm.best || 0;
+  if (!target) return;
+  const short = target - wm.current;
+  if (short <= 0) return;                       // already at or past the target
+
+  idleState.notifiedAt = now;
+  idleState.wasIdle = true;
+  const perDay = short / 7;
+  notify('Nothing running',
+    `Idle ${mins(idleFor)} with ${fmtTokens(short)} still to go this week `
+    + `- about ${fmtTokens(perDay)} a day. The block you are in expires either way.`,
+    { raise: false });
+}
+
+/** Same scaling the dashboard uses, so the toast and the page agree. */
+function fmtTokens(n) {
+  n = Number(n) || 0;
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return Math.round(n / 1e6) + 'M';
+  if (n >= 1e3) return Math.round(n / 1e3) + 'k';
+  return String(Math.round(n));
+}
 
 function checkAlerts() {
   if (!CONFIG.alertOnReset) return;
@@ -1748,6 +1826,15 @@ const server = http.createServer(async (req, res) => {
       CONFIG.earlyResetToleranceSec = Math.min(3600, Math.max(0, Math.round(Number(j.earlyResetToleranceSec))));
     if (isFinite(Number(j.resetGraceMinutes)))
       CONFIG.resetGraceMinutes = Math.min(720, Math.max(1, Math.round(Number(j.resetGraceMinutes))));
+    if (typeof j.idleAlert === 'boolean') CONFIG.idleAlert = j.idleAlert;
+    if (isFinite(Number(j.idleAfterMin)))
+      CONFIG.idleAfterMin = Math.min(720, Math.max(5, Math.round(Number(j.idleAfterMin))));
+    if (isFinite(Number(j.idleRepeatMin)))
+      CONFIG.idleRepeatMin = Math.min(1440, Math.max(10, Math.round(Number(j.idleRepeatMin))));
+    if (isFinite(Number(j.quietFromHour)))
+      CONFIG.quietFromHour = Math.min(23, Math.max(0, Math.round(Number(j.quietFromHour))));
+    if (isFinite(Number(j.quietToHour)))
+      CONFIG.quietToHour = Math.min(23, Math.max(0, Math.round(Number(j.quietToHour))));
     if (isFinite(Number(j.renewalDay))) CONFIG.renewalDay = Math.min(28, Math.max(1, Math.round(Number(j.renewalDay))));
     if (typeof j.miniOnTop === 'boolean') CONFIG.miniOnTop = j.miniOnTop;
     if (isFinite(Number(j.needleWindowSec)) && Number(j.needleWindowSec) >= 30) CONFIG.needleWindowSec = Number(j.needleWindowSec);
@@ -2149,6 +2236,7 @@ function boot() {
     scanTimer = setTimeout(() => {
       scanTimer = null; lastScanAt = Date.now();
       if (scan()) { pushState(); checkAlerts(); }
+      checkIdle();                       // idle is a non-event, so it ticks regardless
     }, wait);
   };
   let watching = false;

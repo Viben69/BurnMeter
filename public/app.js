@@ -1278,6 +1278,14 @@ function apply(s) {
     set('#tCover', T.blockCoverageGoal || 0);
     set('#tEarly', T.earlyResetToleranceSec);
     set('#tGrace', T.resetGraceMinutes);
+    set('#tIdleAfter', T.idleAfterMin);
+    set('#tIdleRepeat', T.idleRepeatMin);
+    set('#tQuietFrom', T.quietFromHour);
+    set('#tQuietTo', T.quietToHour);
+    if (document.activeElement !== $('#tIdle')) $('#tIdle').checked = !!T.idleAlert;
+    $('#tIdleNote').textContent = T.idleAlert
+      ? `On. Silent between ${T.quietFromHour}:00 and ${T.quietToHour}:00.`
+      : 'Off.';
     const wm = s.weekMax || {};
     $('#tNote').textContent = (T.weekTokenGoal > 0
       ? `Measuring against your goal of ${toks(T.weekTokenGoal)} a week.`
@@ -1319,13 +1327,20 @@ $('#tSave').onclick = async () => {
       weekTokenGoal: Math.max(0, Number($('#tGoal').value) || 0) * 1e6,
       blockCoverageGoal: Number($('#tCover').value) || 0,
       earlyResetToleranceSec: Number($('#tEarly').value) || 0,
-      resetGraceMinutes: Number($('#tGrace').value) || 30
+      resetGraceMinutes: Number($('#tGrace').value) || 30,
+      idleAlert: $('#tIdle').checked,
+      idleAfterMin: Number($('#tIdleAfter').value) || 20,
+      idleRepeatMin: Number($('#tIdleRepeat').value) || 60,
+      quietFromHour: Number($('#tQuietFrom').value),
+      quietToHour: Number($('#tQuietTo').value)
     })
   }).catch(() => {});
   const n = $('#tSaved'); n.textContent = 'saved';
   setTimeout(() => n.textContent = '', 1600);
 };
-['#tGoal', '#tCover', '#tEarly', '#tGrace'].forEach(id =>
+$('#tIdle').onchange = () => $('#tSave').click();
+['#tGoal', '#tCover', '#tEarly', '#tGrace', '#tIdleAfter', '#tIdleRepeat',
+ '#tQuietFrom', '#tQuietTo'].forEach(id =>
   $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('#tSave').click(); }));
 
 $('#planUsd').addEventListener('keydown', e => { if (e.key === 'Enter') $('#planSave').click(); });
