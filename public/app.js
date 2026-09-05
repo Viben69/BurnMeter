@@ -55,10 +55,19 @@ const money1 = v => (MODE === 'retail' || RATE == null) ? usdC(v) : usdC(toActua
 
 /** The words that go with a figure in this mode. */
 const LENS = {
-  retail: { noun: 'at API rates',         col: 'At API rates' },
-  actual: { noun: 'of your fee',          col: 'Your cost' },
-  deal:   { noun: 'retail \u2192 actual', col: 'Retail \u2192 actual' }
+  retail:  { noun: 'at API rates',         col: 'At API rates' },
+  actual:  { noun: 'of your fee',          col: 'Your cost' },
+  deal:    { noun: 'retail → actual', col: 'Retail → actual' },
+  tokens:  { noun: 'tokens',               col: 'Tokens' },
+  cache:   { noun: 'tokens',               col: 'Tokens' },
+  weekmax: { noun: 'tokens',               col: 'Tokens' }
 };
+/* The three token lenses count tokens rather than money, so anything that
+   would otherwise print dollars has to know which world it is in. */
+const TOKEN_MODES = ['tokens', 'cache', 'weekmax'];
+const isTokenMode = () => TOKEN_MODES.includes(MODE);
+const tokOf = w => (w.in || 0) + (w.out || 0) + (w.read || 0) + (w.write || 0);
+const pctOf = (a, b) => b > 0 ? (a / b) * 100 : 0;
 const lens = () => LENS[MODE] || LENS.retail;
 const toks = v => {
   const n = Number(v) || 0;
@@ -265,12 +274,14 @@ function renderOverview(s) {
   // --- windows ---
   const wn = s.windows, resp = w => `${w.requests.toLocaleString()} responses`;
   $('#windowsTag').textContent = lens().noun;
+  // The tag already says which unit these are in, so the figures had better agree.
+  const wv = w => isTokenMode() ? toks(tokOf(w)) : money(w.cost);
   $('#windows').innerHTML = [
-    stat('Today', money(wn.today.cost), resp(wn.today)),
-    stat('5-hour block', money(wn.block.cost), resp(wn.block)),
-    stat('7 days', money(wn.week7.cost), resp(wn.week7)),
-    stat('This period', money(wn.month.cost), resp(wn.month)),
-    stat('30 days', money(wn.d30.cost), resp(wn.d30))
+    stat('Today', wv(wn.today), resp(wn.today)),
+    stat('5-hour block', wv(wn.block), resp(wn.block)),
+    stat('7 days', wv(wn.week7), resp(wn.week7)),
+    stat('This period', wv(wn.month), resp(wn.month)),
+    stat('30 days', wv(wn.d30), resp(wn.d30))
   ].join('');
 
   drawSpark(s.spark);
@@ -301,7 +312,12 @@ function renderOverview(s) {
        subscription you pay the flat fee and nothing else. Switch to <i>Actual</i> to see your real share of it.`;
   $('#thValue').textContent = lens().col;
   $('#feedThValue').textContent = lens().col;
-  $('#dailyLegend').textContent = MODE === 'actual' ? 'daily, your cost' : MODE === 'deal' ? 'daily, retail \u2192 actual' : 'daily, at API rates';
+  $('#dailyLegend').textContent = isTokenMode() ? 'tokens per day'
+    : MODE === 'actual' ? 'daily, your cost'
+    : MODE === 'deal' ? 'daily, retail → actual' : 'daily, at API rates';
+  $('#dailyPace').textContent = isTokenMode() ? 'best-week pace' : 'break-even pace';
+  $('#dailyHead').textContent = MODE === 'weekmax'
+    ? 'Last 14 days, against your best week' : 'This period, day by day';
   $('#footStats').innerHTML =
     `BurnMeter v${esc(s.version || '?')} \u00b7 tracking <b>${s.eventsTracked.toLocaleString()}</b> API responses across
      <b>${s.sessionsTracked}</b> sessions and <b>${s.filesTracked}</b> transcripts,
@@ -493,6 +509,8 @@ function renderHero(s) {
   const fill = $('#worthFill'), mark = $('#worthMark');
   const brokeEvenTxt = w.breakEvenAt ? `paid for itself on <b>${day(w.breakEvenAt)}</b>` : null;
 
+  if (isTokenMode()) return renderHeroTokens(s);
+
   if (MODE === 'actual') {
     $('#worthTitle').textContent = 'What you pay';
     $('#worthSpent').textContent = usd(fee, 0);
@@ -668,21 +686,182 @@ function drawSpark(data) {
     }, el);
     const mins = Math.round((n - i) * (24 * 60 / n));
     rect.addEventListener('mouseenter', e =>
-      showTip(e, `<b>${money(v)}</b><br><span style="color:var(--muted)">${mins > 60 ? Math.round(mins / 60) + 'h' : mins + 'm'} ago · 30 min bucket</span>`));
+      showTip(e, `<b>${fmt2(v)}</b><br><span style="color:var(--muted)">${mins > 60 ? Math.round(mins / 60) + 'h' : mins + 'm'} ago · 30 min bucket</span>`));
     rect.addEventListener('mouseleave', hideTip);
   });
 }
 
 // ------------------------------------------------------------ daily chart --
 
-function drawDaily(s) {
+/*
+ * The token lenses. Money is only tokens with a per-model exchange rate baked
+ * in, and when the question is "am I using what I am paying for" the exchange
+ * rate is noise. These three answer it in the raw unit.
+ */
+function renderHeroTokens(s) {
+  const W = s.windows, wm = s.weekMax || {};
+  const d30 = W.d30, wk = W.week7, blk = W.block;
+  const total30 = tokOf(d30);
+  const fill = $('#worthFill'), mark = $('#worthMark');
+  const day = t => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const DASH = '—';
+  mark.style.left = '100%';
+
+  if (MODE === 'cache') {
+    const read = d30.read || 0, fresh = d30.in || 0, out = d30.out || 0, write = d30.write || 0;
+    const share = pctOf(read, total30);
+    $('#worthTitle').textContent = 'Where the tokens go';
+    $('#worthSpent').textContent = share.toFixed(1) + '%';
+    $('#worthSub').textContent = 'of 30 days of tokens are cache reads';
+    // At these ratios a raw decimal reads like a bug, so scale it like any
+    // other large number once it runs away.
+    const ratio = fresh > 0 ? read / fresh : null;
+    $('#worthMult').innerHTML = ratio == null ? '&mdash;'
+      : ratio >= 1000 ? toks(ratio) + '&times;' : ratio.toFixed(1) + '&times;';
+    $('#worthSub2').textContent = 'cache reads per fresh input token';
+    fill.style.width = Math.min(100, share) + '%';
+    fill.style.background = share >= 70 ? 'var(--s3)' : share >= 40 ? 'var(--s4)' : 'var(--s2)';
+    $('#worthVerdict').innerHTML = total30 === 0
+      ? 'No usage in the last 30 days.'
+      : `Cache reads are the cheap ones &mdash; a tenth of input rate, and a fortieth on Fable 5.1.
+         A high share here means long conversations are paying off rather than being re-read from
+         scratch. Output is the expensive end: <b>${toks(out)}</b> of output against
+         <b>${toks(fresh)}</b> of fresh input over 30 days.`;
+    $('#worthStats').innerHTML = [
+      stat('Cache read',  toks(read),  pctOf(read, total30).toFixed(1) + '% of all tokens'),
+      stat('Cache write', toks(write), pctOf(write, total30).toFixed(1) + '% &mdash; the cost of building it'),
+      stat('Fresh input', toks(fresh), pctOf(fresh, total30).toFixed(1) + '% never cached'),
+      stat('Output',      toks(out),   pctOf(out, total30).toFixed(1) + '% &mdash; what it wrote back')
+    ].join('');
+    return;
+  }
+
+  if (MODE === 'weekmax') {
+    const cur = wm.current || 0, best = wm.best || 0, pct = wm.pct || 0;
+    $('#worthTitle').textContent = 'Token max';
+    $('#worthSpent').textContent = toks(cur);
+    $('#worthSub').textContent = 'tokens in the last 7 days';
+    $('#worthMult').textContent = best > 0 ? Math.round(pct) + '%' : DASH;
+    $('#worthSub2').textContent = 'of your biggest week so far';
+    fill.style.width = Math.min(100, pct) + '%';
+    fill.style.background = wm.record ? 'var(--s3)' : pct >= 75 ? 'var(--s4)' : 'var(--s2)';
+    $('#worthVerdict').innerHTML = !wm.haveFullWeek
+      ? 'Less than a week of history so far, so there is no best week to measure against yet.'
+      : wm.record
+        ? `This is your biggest week on record &mdash; <b>${toks(cur)}</b> tokens, past the previous
+           high of <b>${toks(best)}</b>. Whatever you are doing, the ceiling was higher than you thought.`
+        : `Your best week was <b>${toks(best)}</b> tokens${wm.bestEndedAt ? `, ending ${day(wm.bestEndedAt)}` : ''}.
+           You are <b>${toks(wm.headroom || 0)}</b> short of matching it &mdash; that is capacity you have
+           already proven you can use. No weekly ceiling is published anywhere, so your own record is
+           the only benchmark that is not invented.`;
+    $('#worthStats').innerHTML = [
+      stat('Best week', best > 0 ? toks(best) : DASH, wm.bestEndedAt ? 'ended ' + day(wm.bestEndedAt) : 'no full week yet'),
+      stat('Headroom', toks(wm.headroom || 0), 'to match your record'),
+      stat('Per day to match', best > 0 ? toks(best / 7) : DASH, 'sustained, over seven days'),
+      stat('This block', toks(tokOf(blk)), 'in the current 5-hour window')
+    ].join('');
+    return;
+  }
+
+  // ---- plain token counts ----
+  const per = s.period, mo = W.month;
+  const total = tokOf(mo);
+  $('#worthTitle').textContent = 'Tokens burned';
+  $('#worthSpent').textContent = toks(total);
+  $('#worthSub').textContent = `this period, ${day(per.start)} to ${day(per.end - 1)}`;
+  $('#worthMult').textContent = toks(tokOf(wk));
+  $('#worthSub2').textContent = 'in the last 7 days';
+  const pct = wm.best > 0 ? pctOf(tokOf(wk), wm.best) : 0;
+  fill.style.width = Math.min(100, pct) + '%';
+  fill.style.background = 'var(--s1)';
+  $('#worthVerdict').innerHTML = total === 0
+    ? 'Nothing recorded this period.'
+    : `<b>${toks(total)}</b> tokens this period across <b>${per.requests.toLocaleString()}</b> responses
+       &mdash; averaging <b>${toks(total / Math.max(1, per.requests))}</b> a response.
+       The bar shows the last seven days against your biggest week ever.`;
+  $('#worthStats').innerHTML = [
+    stat('Fresh input', toks(mo.in || 0),    pctOf(mo.in || 0, total).toFixed(1) + '% of the period'),
+    stat('Output',      toks(mo.out || 0),   pctOf(mo.out || 0, total).toFixed(1) + '%'),
+    stat('Cache read',  toks(mo.read || 0),  pctOf(mo.read || 0, total).toFixed(1) + '%'),
+    stat('Cache write', toks(mo.write || 0), pctOf(mo.write || 0, total).toFixed(1) + '%')
+  ].join('');
+}
+
+/*
+ * Fourteen days of tokens against the pace that would match your best week.
+ * Bars at or above the line are the days pulling the seven-day total up.
+ */
+function drawWeekMax(s) {
   const el = $('#daily'); clear(el);
+  const wm = s.weekMax || {};
+  const data = wm.days || [];
+  const W = 940, H = 220, L = 62, R = 12, T = 12, B = 26;
+  const iw = W - L - R, ih = H - T - B;
+  const pace = wm.best > 0 ? wm.best / 7 : 0;
+  const max = Math.max(pace * 1.25, ...data.map(x => x.tokens), 1);
+  const now = Date.now();
+  const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+  const y = v => T + ih - (v / max) * ih;
+  const bw = iw / Math.max(1, data.length);
+
+  for (let i = 0; i <= 4; i++) {
+    const v = (max / 4) * i, yy = y(v);
+    svg('line', { x1: L, y1: yy, x2: W - R, y2: yy, class: i ? 'gridline' : 'baseline' }, el);
+    const t = svg('text', { x: L - 8, y: yy + 3.5, 'text-anchor': 'end', class: 'axlab' }, el);
+    t.textContent = toks(v);
+  }
+
+  data.forEach((x, i) => {
+    const v = x.tokens || 0;
+    const h = v > 0 ? Math.max(2, (v / max) * ih) : 0;
+    const xx = L + i * bw;
+    const isToday = x.d === midnight.getTime();
+    const r = svg('rect', {
+      x: xx + bw * .16, y: T + ih - h, width: bw * .68, height: h,
+      fill: isToday ? 'var(--s2)' : (pace > 0 && v >= pace) ? 'var(--s3)' : 'var(--s1)', rx: 2
+    }, el);
+    const d = new Date(x.d);
+    r.addEventListener('mouseenter', e => showTip(e,
+      `<b>${toks(v)} tokens</b><br><span style="color:var(--muted)">` +
+      `${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}` +
+      `${isToday ? ' &middot; today' : ''} &middot; ${usdC(x.cost || 0)} at API rates</span>`));
+    r.addEventListener('mouseleave', hideTip);
+    const t = svg('text', { x: xx + bw / 2, y: H - 8, 'text-anchor': 'middle', class: 'axlab' }, el);
+    t.textContent = d.getDate();
+  });
+
+  if (pace > 0) {
+    const py = y(pace);
+    svg('line', { x1: L, y1: py, x2: W - R, y2: py, stroke: 'var(--baseline)',
+                  'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, el);
+    const lab = svg('text', { x: W - R - 4, y: py - 6, 'text-anchor': 'end', class: 'axlab', fill: 'var(--ink-2)' }, el);
+    lab.textContent = `best-week pace ${toks(pace)}/day`;
+  }
+
+  const seen = data.filter(x => x.d <= now).length;
+  const over = data.filter(x => x.d <= now && (x.tokens || 0) >= pace).length;
+  $('#dailyTag').textContent = pace > 0
+    ? `${over} of the last ${seen} days beat your best-week pace`
+    : 'not enough history for a best week yet';
+}
+
+function drawDaily(s) {
+  if (MODE === 'weekmax') return drawWeekMax(s);
+  const el = $('#daily'); clear(el);
+  // The token lenses plot the same bars in a different unit; only the value
+  // getter, the axis labels and the pace line change.
+  const useTok = isTokenMode();
+  const val  = x => useTok ? (x.tokens || 0) : x.cost;
+  const fmt  = v => useTok ? toks(v) : money1(v);
+  const fmt2 = v => useTok ? toks(v) + ' tokens' : money(v);
   // One bar per day of the billing period. Days not reached yet are ghosted.
   const data = s.daily || [];
   const W = 940, H = 220, L = 52, R = 12, T = 12, B = 26;
   const iw = W - L - R, ih = H - T - B;
-  const needPerDay = s.worth.perDayNeeded;
-  const max = Math.max(needPerDay * 1.25, ...data.map(x => x.cost), 0.01);
+  const needPerDay = useTok
+    ? ((s.weekMax && s.weekMax.best) ? s.weekMax.best / 7 : 0)
+    : s.worth.perDayNeeded;
+  const max = Math.max(needPerDay * 1.25, ...data.map(val), useTok ? 1 : 0.01);
   const now = Date.now();
   const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
   let todayIdx = data.findIndex(x => x.d === midnight.getTime());
@@ -694,11 +873,11 @@ function drawDaily(s) {
     const v = (max / 4) * i, yy = y(v);
     svg('line', { x1: L, y1: yy, x2: W - R, y2: yy, class: i ? 'gridline' : 'baseline' }, el);
     const t = svg('text', { x: L - 8, y: yy + 3.5, 'text-anchor': 'end', class: 'axlab' }, el);
-    t.textContent = money1(v);
+    t.textContent = fmt(v);
   }
 
   data.forEach((x, i) => {
-    const v = x.cost;
+    const v = val(x);
     const h = v > 0 ? Math.max(2, (v / max) * ih) : 0;
     const xx = L + i * bw;
     const isToday = i === todayIdx, future = x.d > now;
@@ -723,11 +902,16 @@ function drawDaily(s) {
     'stroke-width': 1.5, 'stroke-dasharray': '5 4'
   }, el);
   const lab = svg('text', { x: W - R - 4, y: py - 6, 'text-anchor': 'end', class: 'axlab', fill: 'var(--ink-2)' }, el);
-  lab.textContent = MODE === 'actual' ? `the fee: ${usdC(needPerDay * (RATE || 1))}/day` : `break even ${usdC(needPerDay)}/day`;
+  lab.textContent = useTok
+    ? `best-week pace ${toks(needPerDay)}/day`
+    : MODE === 'actual' ? `the fee: ${usdC(needPerDay * (RATE || 1))}/day`
+    : `break even ${usdC(needPerDay)}/day`;
 
   const past = data.filter(x => x.d <= now);
-  const over = past.filter(x => x.cost >= needPerDay).length;
-  $('#dailyTag').textContent = `${over} of ${past.length} days beat the break-even pace`;
+  const over = past.filter(x => val(x) >= needPerDay).length;
+  $('#dailyTag').textContent = useTok
+    ? `${over} of ${past.length} days beat your best-week pace`
+    : `${over} of ${past.length} days beat the break-even pace`;
 }
 
 // ================================================================ sessions ==
@@ -1059,9 +1243,10 @@ $('#planName').addEventListener('keydown', e => { if (e.key === 'Enter') $('#pla
 
 /* Retail / Deal / Actual. Saved server-side so the gauge follows. */
 function syncModeSwitch() {
-  $$('#modeSwitch button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === MODE)));
+  $$('#modeSwitch button, #modeSwitch2 button')
+    .forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === MODE)));
 }
-$$('#modeSwitch button').forEach(b => b.onclick = async () => {
+$$('#modeSwitch button, #modeSwitch2 button').forEach(b => b.onclick = async () => {
   MODE = b.dataset.mode;
   modePendingUntil = Date.now() + 3000;
   syncModeSwitch();

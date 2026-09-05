@@ -41,6 +41,13 @@
       <button data-mode="actual" aria-pressed="false">Actual</button>
     </div>
 
+    <div class="seg" id="modeSwitch2" role="group" aria-label="Token lens"
+         title="Tokens: raw counts instead of money. Cache: where the tokens actually go. Week max: how close this week is to the biggest week you have managed.">
+      <button data-mode="tokens"  aria-pressed="false">Tokens</button>
+      <button data-mode="cache"   aria-pressed="false">Cache</button>
+      <button data-mode="weekmax" aria-pressed="false">Week max</button>
+    </div>
+
     <button class="icon" id="btnMini"  title="Open the floating gauge in its own window">◱ Gauge</button>
     <button class="icon" id="btnTheme" title="Toggle light / dark">◐</button>
   </header>
@@ -114,11 +121,11 @@
     </div>
 
     <div class="card" style="margin-top:13px">
-      <h2>This period, day by day <span class="tag" id="dailyTag"></span></h2>
+      <h2><span id="dailyHead">This period, day by day</span> <span class="tag" id="dailyTag"></span></h2>
       <div class="legend">
         <span><i class="swatch" style="background:var(--s1)"></i><span id="dailyLegend">daily, at API rates</span></span>
         <span><i class="swatch" style="background:var(--s2)"></i>today</span>
-        <span><i class="swatch" style="background:var(--baseline);height:2px;width:16px;border-radius:0"></i>break-even pace</span>
+        <span><i class="swatch" style="background:var(--baseline);height:2px;width:16px;border-radius:0"></i><span id="dailyPace">break-even pace</span></span>
       </div>
       <div class="chartbox chartscroll"><svg id="daily" viewBox="0 0 940 220"></svg></div>
     </div>

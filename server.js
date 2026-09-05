@@ -792,13 +792,16 @@ function dailyThisPeriod(pStart, pEnd) {
   const out = [];
   for (let i = 0; i < days; i++) {
     const d = new Date(day0); d.setDate(d.getDate() + i);           // DST-safe
-    out.push({ d: d.getTime(), cost: 0, requests: 0 });
+    out.push({ d: d.getTime(), cost: 0, requests: 0, tokens: 0 });
   }
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i];
     if (e.t < pStart) break;
     const idx = Math.round((startOfDay(new Date(e.t)) - day0) / 864e5);
-    if (idx >= 0 && idx < days) { out[idx].cost += e.c; out[idx].requests++; }
+    if (idx >= 0 && idx < days) {
+      out[idx].cost += e.c; out[idx].requests++;
+      out[idx].tokens += e.i + e.o + e.r + e.w;
+    }
   }
   return out;
 }
@@ -847,16 +850,70 @@ function hourHistogram(from) {
 let selfCache = { n: -1, at: 0, fiveHour: null, week: null };
 
 /** Cost per hour bucket across all recorded history. */
-function hourlyBuckets() {
+function hourlyBuckets(metric = 'cost') {
   if (!events.length) return [];
   const from = Math.floor(events[0].t / 36e5) * 36e5;
   const n = Math.ceil((Date.now() - from) / 36e5) + 1;
   const arr = new Float64Array(Math.max(1, n));
+  const tokens = metric === 'tokens';
   for (const e of events) {
     const i = Math.floor((e.t - from) / 36e5);
-    if (i >= 0 && i < arr.length) arr[i] += e.c;
+    if (i >= 0 && i < arr.length) arr[i] += tokens ? (e.i + e.o + e.r + e.w) : e.c;
   }
   return arr;
+}
+
+/*
+ * How this week compares with the biggest week you have actually managed.
+ * Anthropic does not publish the weekly ceiling, so inventing one would be a
+ * lie dressed as a gauge. Your own best rolling seven days is a number we can
+ * stand behind: beat it and you genuinely found headroom you were not using.
+ */
+let weekMaxCache = { n: -1, at: 0, val: null };
+function weekMax() {
+  const now = Date.now();
+  if (weekMaxCache.n === events.length && now - weekMaxCache.at < 30e3) return weekMaxCache.val;
+  const arr = hourlyBuckets('tokens');
+  const WIN = 24 * 7;
+  const from = events.length ? Math.floor(events[0].t / 36e5) * 36e5 : now;
+  let best = 0, bestEnd = 0, sum = 0;
+  for (let i = 0; i < arr.length; i++) {
+    sum += arr[i];
+    if (i >= WIN) sum -= arr[i - WIN];
+    if (i >= WIN - 1 && sum > best) { best = sum; bestEnd = from + (i + 1) * 36e5; }
+  }
+  const c = sumRange(now - 7 * 864e5);
+  const current = c.in + c.out + c.read + c.write;
+  // Enough history to have seen a full week? Below that, "best" is meaningless.
+  const spanDays = events.length ? (now - events[0].t) / 864e5 : 0;
+  const val = {
+    current, best, bestEndedAt: bestEnd || null,
+    haveFullWeek: spanDays >= 7,
+    pct: best > 0 ? (current / best) * 100 : null,
+    headroom: Math.max(0, best - current),
+    record: best > 0 && current >= best,
+    days: dailyTokens(14)
+  };
+  weekMaxCache = { n: events.length, at: now, val };
+  return val;
+}
+
+/** Token totals per day, oldest first, for the week-max chart. */
+function dailyTokens(days = 14) {
+  const today = startOfDay();
+  const from = today - (days - 1) * 864e5;
+  const out = [];
+  for (let i = 0; i < days; i++) out.push({ d: from + i * 864e5, tokens: 0, cost: 0 });
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.t < from) break;
+    const idx = Math.round((startOfDay(new Date(e.t)) - from) / 864e5);
+    if (idx >= 0 && idx < days) {
+      out[idx].tokens += e.i + e.o + e.r + e.w;
+      out[idx].cost += e.c;
+    }
+  }
+  return out;
 }
 
 /** Percentile of every rolling `win`-bucket sum, ignoring idle stretches. */
@@ -1261,6 +1318,7 @@ function buildState() {
     activeCost: active.reduce((n, a) => n + a.windowCost, 0),
     spark:  sparkline(24, 48),
     daily:  dailyThisPeriod(pStart, pEnd),
+    weekMax: weekMax(),
     byModel:   breakdown(pStart, 'm'),
     byProject: breakdown(pStart, 'p'),
     recent: events.slice(-14).reverse().map(e => ({
@@ -1618,7 +1676,8 @@ const server = http.createServer(async (req, res) => {
       const ids = j.miniCluster.filter(x => typeof x === 'string' && x.length <= 20).slice(0, 8);
       if (ids.length >= 2) CONFIG.miniCluster = ids;
     }
-    if (['retail', 'actual', 'deal'].includes(j.pricingMode)) CONFIG.pricingMode = j.pricingMode;
+    if (['retail', 'actual', 'deal', 'tokens', 'cache', 'weekmax'].includes(j.pricingMode))
+      CONFIG.pricingMode = j.pricingMode;
     if (isFinite(Number(j.renewalDay))) CONFIG.renewalDay = Math.min(28, Math.max(1, Math.round(Number(j.renewalDay))));
     if (typeof j.miniOnTop === 'boolean') CONFIG.miniOnTop = j.miniOnTop;
     if (isFinite(Number(j.needleWindowSec)) && Number(j.needleWindowSec) >= 30) CONFIG.needleWindowSec = Number(j.needleWindowSec);
