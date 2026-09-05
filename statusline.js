@@ -84,6 +84,13 @@ function run(j) {
       five_hour_reset:  typeof fh.resets_at === 'number' ? fh.resets_at : null,
       seven_day_pct:    typeof sd.used_percentage === 'number' ? sd.used_percentage : null,
       seven_day_reset:  typeof sd.resets_at === 'number' ? sd.resets_at : null,
+      /*
+       * Everything the host actually sent, verbatim. Cherry-picking two keys
+       * meant a per-model weekly bucket - the desktop app shows one for Fable -
+       * was read and thrown away. Snapshot the lot and let the dashboard decide
+       * what it understands; new buckets then cost nothing to pick up.
+       */
+      rate_limits:      rl,
       model:            j.model && j.model.display_name || null,
       model_id:         j.model && j.model.id || null,
       context_pct:      typeof cw.used_percentage === 'number' ? cw.used_percentage : null,

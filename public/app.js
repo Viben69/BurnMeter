@@ -1271,6 +1271,26 @@ function apply(s) {
   $('#dot').className = 'dot' + (s.scanning ? ' warn' : '');
   $('#livetext').textContent = s.scanning ? 'scanning' : 'live';
   if (document.activeElement !== $('#planName')) $('#planName').value = s.plan.name;
+  // Real allowances, when the statusline has ever reported. Every bucket it
+  // sent, so a per-model weekly limit shows up without needing to be named.
+  const rw = (s.limits && s.limits.windows) || [];
+  $('#lRealCard').style.display = rw.length ? '' : 'none';
+  if (rw.length) {
+    const when = s.limits.updatedAt ? new Date(s.limits.updatedAt * 1000) : null;
+    $('#lRealTag').textContent = when
+      ? (s.limits.stale ? 'last seen ' : 'as of ') + when.toLocaleString() : '';
+    $('#lReal').innerHTML = rw.map(w => {
+      const pct = Math.max(0, Math.min(100, w.pct));
+      const col = pct >= 85 ? 'var(--s2)' : pct >= 60 ? 'var(--s4)' : 'var(--s3)';
+      const left = w.resetAt ? `resets ${new Date(w.resetAt).toLocaleString()}` : '';
+      return `<div style="margin:10px 0">
+        <div class="row" style="justify-content:space-between">
+          <b>${esc(w.label)}</b><span>${pct.toFixed(0)}%</span></div>
+        <div class="bar" style="margin:4px 0"><i style="width:${pct}%;background:${col}"></i></div>
+        <div style="color:var(--muted);font-size:12px">${esc(left)}</div></div>`;
+    }).join('');
+  }
+
   if (s.tuning) {
     const T = s.tuning;
     const set = (id, v) => { if (document.activeElement !== $(id)) $(id).value = v; };

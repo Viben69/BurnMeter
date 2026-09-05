@@ -727,11 +727,52 @@ function parseLimits() {
       model:         j.model || null,
       contextPct:    num(j.context_pct),
       sessionCost:   num(j.session_cost),
-      sessionId:     j.session_id || null
+      sessionId:     j.session_id || null,
+      /*
+       * Every bucket the host reported, not just the two we happen to name.
+       * The desktop app shows a separate weekly allowance per model - Fable
+       * has its own - and hard-coding five_hour and seven_day meant reading
+       * that and dropping it. Percentages arrive either as used_percentage
+       * (0-100) or utilization (0-1) depending on which surface sent them.
+       */
+      windows: parseWindows(j.rate_limits)
     };
   } catch {
     return NO_LIMITS;
   }
+}
+
+const WINDOW_LABEL = {
+  five_hour: '5-hour', seven_day: 'Weekly, all models', seven_day_oauth: 'Weekly, all models'
+};
+
+function parseWindows(rl) {
+  if (!rl || typeof rl !== 'object') return [];
+  const out = [];
+  for (const [key, w] of Object.entries(rl)) {
+    if (!w || typeof w !== 'object') continue;
+    let pct = num(w.used_percentage);
+    if (pct == null) {
+      const u = num(w.utilization);
+      if (u != null) pct = u <= 1.5 ? u * 100 : u;      // 0-1 on some surfaces
+    }
+    if (pct == null) continue;
+    const reset = num(w.resets_at) != null ? num(w.resets_at) : num(w.resetsAt);
+    out.push({
+      key, pct,
+      label: WINDOW_LABEL[key] || prettyWindow(key),
+      resetAt: reset != null ? (reset > 1e12 ? reset : reset * 1000) : null
+    });
+  }
+  // Longest windows last, so a 5-hour reads before a weekly.
+  return out.sort((a, b) => (a.key.length - b.key.length) || a.key.localeCompare(b.key));
+}
+
+/** seven_day_fable -> "Weekly, Fable". Unknown shapes degrade to plain words. */
+function prettyWindow(key) {
+  const m = /^seven_day[_-](.+)$/.exec(key);
+  if (m) return 'Weekly, ' + m[1].replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return key.replace(/[_-]+/g, ' ').replace(/^\w/, c => c.toUpperCase());
 }
 
 // ------------------------------------------------------------ aggregate ----
@@ -1358,6 +1399,7 @@ function buildState() {
     limits: {
       fiveHourPct: limits.fiveHourPct,
       weekPct:     limits.weekPct,
+      windows:     limits.windows || [],
       stale:       limits.stale,
       updatedAt:   limits.updatedAt,
       contextPct:  limits.contextPct,
