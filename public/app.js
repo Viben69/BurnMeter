@@ -316,6 +316,7 @@ function renderOverview(s) {
     : MODE === 'actual' ? 'daily, your cost'
     : MODE === 'deal' ? 'daily, retail → actual' : 'daily, at API rates';
   $('#dailyPace').textContent = isTokenMode() ? 'best-week pace' : 'break-even pace';
+  $('#dailyLimitLegend').style.display = MODE === 'weekmax' ? '' : 'none';
   $('#dailyHead').textContent = MODE === 'weekmax'
     ? 'Last 14 days, against your best week' : 'This period, day by day';
   $('#footStats').innerHTML =
@@ -753,12 +754,13 @@ function renderHeroTokens(s) {
         : `Your best week was <b>${toks(best)}</b> tokens${wm.bestEndedAt ? `, ending ${day(wm.bestEndedAt)}` : ''}.
            You are <b>${toks(wm.headroom || 0)}</b> short of matching it &mdash; that is capacity you have
            already proven you can use. No weekly ceiling is published anywhere, so your own record is
-           the only benchmark that is not invented.`;
+           the only benchmark that is not invented.` + weekWhy(wm);
+    const h = wm.hits || { now: 0, best: 0, earlyNow: 0, earlyBest: 0 };
     $('#worthStats').innerHTML = [
       stat('Best week', best > 0 ? toks(best) : DASH, wm.bestEndedAt ? 'ended ' + day(wm.bestEndedAt) : 'no full week yet'),
       stat('Headroom', toks(wm.headroom || 0), 'to match your record'),
-      stat('Per day to match', best > 0 ? toks(best / 7) : DASH, 'sustained, over seven days'),
-      stat('This block', toks(tokOf(blk)), 'in the current 5-hour window')
+      stat('Limits hit', `${h.now} vs ${h.best}`, 'this week vs your record week'),
+      stat('Early resets', `${h.earlyNow} vs ${h.earlyBest}`, 'capacity handed back sooner than promised')
     ].join('');
     return;
   }
@@ -791,6 +793,30 @@ function renderHeroTokens(s) {
  * Fourteen days of tokens against the pace that would match your best week.
  * Bars at or above the line are the days pulling the seven-day total up.
  */
+/*
+ * A bigger week is either you pushing harder or the ceiling being lifted on
+ * you. Only one of those is a habit worth repeating, so say which it was.
+ */
+function weekWhy(wm) {
+  const h = wm.hits;
+  if (!h || !wm.bestEndedAt) return '';
+  const times = n => n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`;
+  const same = h.now === h.best;
+  const extra = h.best - h.now;
+  const bonus = h.earlyBest > h.earlyNow
+    ? ` It also picked up <b>${times(h.earlyBest - h.earlyNow)}</b> more early resets than this week has.` : '';
+  if (same) {
+    return ` <b>Both weeks hit the limit ${times(h.now)}</b>, so the gap is pace rather than extra
+             capacity handed to you — the room was there and went unused.` + bonus;
+  }
+  if (extra > 0) {
+    return ` Your record week ran into the limit <b>${times(extra)} more</b> than this one, so part of
+             that total was extra capacity rather than effort.` + bonus;
+  }
+  return ` You have already hit the limit <b>${times(-extra)} more</b> than your record week did, so
+           you are pressing harder against the ceiling than you were then.` + bonus;
+}
+
 function drawWeekMax(s) {
   const el = $('#daily'); clear(el);
   const wm = s.weekMax || {};
@@ -837,6 +863,32 @@ function drawWeekMax(s) {
     const lab = svg('text', { x: W - R - 4, y: py - 6, 'text-anchor': 'end', class: 'axlab', fill: 'var(--ink-2)' }, el);
     lab.textContent = `best-week pace ${toks(pace)}/day`;
   }
+
+  /*
+   * Mark the days you actually ran into the limit. Without these a tall week
+   * is ambiguous: you cannot tell effort from a ceiling that got lifted.
+   */
+  const byDay = new Map();
+  for (const m of (wm.marks || [])) {
+    const k = new Date(m.t); k.setHours(0, 0, 0, 0);
+    const cur = byDay.get(k.getTime()) || { n: 0, early: 0, kinds: new Set() };
+    cur.n++; if (m.early) cur.early++; cur.kinds.add(m.kind || 'limit');
+    byDay.set(k.getTime(), cur);
+  }
+  data.forEach((x, i) => {
+    const hit = byDay.get(x.d);
+    if (!hit) return;
+    const cxx = L + i * bw + bw / 2, top = T + ih + 4;
+    const tri = svg('polygon', {
+      points: `${cxx - 5},${top + 8} ${cxx + 5},${top + 8} ${cxx},${top}`,
+      fill: hit.early ? 'var(--s4)' : 'var(--s2)'
+    }, el);
+    tri.addEventListener('mouseenter', e => showTip(e,
+      `<b>${hit.n} lockout${hit.n > 1 ? 's' : ''}</b>` +
+      `<br><span style="color:var(--muted)">${[...hit.kinds].join(', ')}` +
+      `${hit.early ? ` &middot; ${hit.early} reset early` : ''}</span>`));
+    tri.addEventListener('mouseleave', hideTip);
+  });
 
   const seen = data.filter(x => x.d <= now).length;
   const over = data.filter(x => x.d <= now && (x.tokens || 0) >= pace).length;

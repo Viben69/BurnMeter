@@ -884,6 +884,27 @@ function weekMax() {
   }
   const c = sumRange(now - 7 * 864e5);
   const current = c.in + c.out + c.read + c.write;
+
+  /*
+   * A big week is either you pushing harder or the ceiling being raised on you.
+   * Those are different facts and only one of them is a habit you can repeat,
+   * so count the lockouts inside each window and let the two weeks be compared
+   * on equal terms.
+   */
+  const lk = lockouts();
+  const between = (from, to) => lk.filter(l => l.lastAt >= from && l.lastAt < to);
+  const thisWin = between(now - 7 * 864e5, now + 1);
+  const bestWin = bestEnd ? between(bestEnd - 7 * 864e5, bestEnd) : [];
+  const hits = {
+    now: thisWin.length, best: bestWin.length,
+    earlyNow: thisWin.filter(l => l.early).length,
+    earlyBest: bestWin.filter(l => l.early).length
+  };
+  // Lockouts inside the charted fortnight, so the chart can mark the days.
+  const chartFrom = startOfDay() - 13 * 864e5;
+  const marks = lk.filter(l => l.lastAt >= chartFrom)
+    .map(l => ({ t: l.lastAt, kind: l.kind, early: !!l.early,
+                 waitedMs: l.waitedMs, earlyByMs: l.earlyByMs }));
   // Enough history to have seen a full week? Below that, "best" is meaningless.
   const spanDays = events.length ? (now - events[0].t) / 864e5 : 0;
   const val = {
@@ -892,6 +913,7 @@ function weekMax() {
     pct: best > 0 ? (current / best) * 100 : null,
     headroom: Math.max(0, best - current),
     record: best > 0 && current >= best,
+    hits, marks,
     days: dailyTokens(14)
   };
   weekMaxCache = { n: events.length, at: now, val };
