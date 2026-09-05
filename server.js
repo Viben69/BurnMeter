@@ -94,6 +94,16 @@ const DEFAULT_CONFIG = {
   //   actual - your real share of the flat fee, allocated by usage
   //   deal   - both side by side, with the discount between them
   pricingMode: 'retail',
+  // Token-max targets. 0 on either goal means "measure me against my own
+  // record instead of a number I made up".
+  weekTokenGoal: 0,
+  blockCoverageGoal: 0,
+  // How much earlier than the promised time counts as an early reset.
+  earlyResetToleranceSec: 60,
+  // How long after the promised time you can still return and have it count
+  // as an on-time reset. Come back later than this and an early reset is
+  // indistinguishable from a normal one, so it is scored unknown instead.
+  resetGraceMinutes: 30,
   // Day of the month the subscription renews on (1-28). Turns "this month"
   // into "this billing period", which is the thing the fee actually buys.
   renewalDay: 1,
@@ -101,7 +111,10 @@ const DEFAULT_CONFIG = {
   calibration: null
 };
 
-const NUMERIC_KEYS = new Set(['monthlyUsd', 'port', 'lookbackDays', 'needleWindowSec', 'pollMs', 'miniScale', 'renewalDay', 'partySeconds']);
+const NUMERIC_KEYS = new Set(['monthlyUsd', 'port', 'lookbackDays', 'needleWindowSec', 'pollMs',
+                              'miniScale', 'renewalDay', 'partySeconds',
+                              'weekTokenGoal', 'blockCoverageGoal', 'earlyResetToleranceSec',
+                              'resetGraceMinutes']);
 
 function loadConfig() {
   let c = { ...DEFAULT_CONFIG };
@@ -402,9 +415,22 @@ function lockouts() {
       if (events[mid].t > l.lastAt) { idx = mid; hi = mid - 1; } else lo = mid + 1; }
     l.recoveredAt = idx >= 0 ? events[idx].t : null;
     l.waitedMs = l.recoveredAt ? l.recoveredAt - l.lastAt : null;
-    // Capacity came back sooner than the message promised: an early reset.
-    l.early = !!(l.resetAt && l.recoveredAt && l.recoveredAt < l.resetAt - 60e3);
+    /*
+      * Capacity came back sooner than the message promised: an early reset.
+      * This can only ever be proven when you happened to be at the keyboard
+      * before the promised time. Come back an hour late and an early reset is
+      * indistinguishable from an on-time one, so say "unknown" rather than
+      * quietly scoring it as normal and reporting a zero that means nothing.
+      */
+    const tol = Math.max(0, Number(CONFIG.earlyResetToleranceSec) || 60) * 1000;
+    l.early = !!(l.resetAt && l.recoveredAt && l.recoveredAt < l.resetAt - tol);
     l.earlyByMs = l.early ? l.resetAt - l.recoveredAt : null;
+    const grace = Math.max(0, Number(CONFIG.resetGraceMinutes) || 30) * 60e3;
+    l.verdict = !l.resetAt || !l.recoveredAt ? 'unknown'
+              : l.early ? 'early'
+              : l.recoveredAt <= l.resetAt + grace ? 'ontime'
+              : 'unknown';                      // back too late to tell either way
+    l.lateByMs = l.resetAt && l.recoveredAt ? Math.max(0, l.recoveredAt - l.resetAt) : null;
   }
   return out;
 }
@@ -895,10 +921,13 @@ function weekMax() {
   const between = (from, to) => lk.filter(l => l.lastAt >= from && l.lastAt < to);
   const thisWin = between(now - 7 * 864e5, now + 1);
   const bestWin = bestEnd ? between(bestEnd - 7 * 864e5, bestEnd) : [];
+  const assessable = a => a.filter(l => l.verdict !== 'unknown').length;
   const hits = {
     now: thisWin.length, best: bestWin.length,
     earlyNow: thisWin.filter(l => l.early).length,
-    earlyBest: bestWin.filter(l => l.early).length
+    earlyBest: bestWin.filter(l => l.early).length,
+    // How many of those we could actually judge, so a zero is readable.
+    judgedNow: assessable(thisWin), judgedBest: assessable(bestWin)
   };
   // Lockouts inside the charted fortnight, so the chart can mark the days.
   const chartFrom = startOfDay() - 13 * 864e5;
@@ -1340,7 +1369,18 @@ function buildState() {
     activeCost: active.reduce((n, a) => n + a.windowCost, 0),
     spark:  sparkline(24, 48),
     daily:  dailyThisPeriod(pStart, pEnd),
-    weekMax: weekMax(),
+    // Goals are config rather than a scan result, so they are layered on top
+    // of the cached scan instead of being trapped inside it.
+    weekMax: Object.assign({}, weekMax(), {
+      goal: Number(CONFIG.weekTokenGoal) || 0,
+      coverageGoal: Number(CONFIG.blockCoverageGoal) || 0
+    }),
+    tuning: {
+      weekTokenGoal: Number(CONFIG.weekTokenGoal) || 0,
+      blockCoverageGoal: Number(CONFIG.blockCoverageGoal) || 0,
+      earlyResetToleranceSec: Number(CONFIG.earlyResetToleranceSec) || 60,
+      resetGraceMinutes: Number(CONFIG.resetGraceMinutes) || 30
+    },
     byModel:   breakdown(pStart, 'm'),
     byProject: breakdown(pStart, 'p'),
     recent: events.slice(-14).reverse().map(e => ({
@@ -1700,6 +1740,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (['retail', 'actual', 'deal', 'tokens', 'cache', 'weekmax'].includes(j.pricingMode))
       CONFIG.pricingMode = j.pricingMode;
+    if (isFinite(Number(j.weekTokenGoal)))
+      CONFIG.weekTokenGoal = Math.max(0, Math.round(Number(j.weekTokenGoal)));
+    if (isFinite(Number(j.blockCoverageGoal)))
+      CONFIG.blockCoverageGoal = Math.min(34, Math.max(0, Math.round(Number(j.blockCoverageGoal))));
+    if (isFinite(Number(j.earlyResetToleranceSec)))
+      CONFIG.earlyResetToleranceSec = Math.min(3600, Math.max(0, Math.round(Number(j.earlyResetToleranceSec))));
+    if (isFinite(Number(j.resetGraceMinutes)))
+      CONFIG.resetGraceMinutes = Math.min(720, Math.max(1, Math.round(Number(j.resetGraceMinutes))));
     if (isFinite(Number(j.renewalDay))) CONFIG.renewalDay = Math.min(28, Math.max(1, Math.round(Number(j.renewalDay))));
     if (typeof j.miniOnTop === 'boolean') CONFIG.miniOnTop = j.miniOnTop;
     if (isFinite(Number(j.needleWindowSec)) && Number(j.needleWindowSec) >= 30) CONFIG.needleWindowSec = Number(j.needleWindowSec);
@@ -1853,6 +1901,44 @@ const server = http.createServer(async (req, res) => {
                        partyOnReset: CONFIG.partyOnReset, partySeconds: CONFIG.partySeconds,
                        mediaDir: PARTY_D, media: partyMedia(),
                        recent: alertLog.slice(-15).reverse() });
+  }
+
+  /*
+   * Every week you have on record, so a strategy can be checked against
+   * history rather than argued about. Coverage is the interesting column:
+   * a week has 33.6 five-hour blocks in it, and the ones you sleep through
+   * are capacity that expires whether or not you ever hit a limit.
+   */
+  if (url.pathname === '/api/weeks') {
+    const BLOCK = 5 * 36e5, WEEK = 7 * 864e5;
+    if (!events.length) return json(res, { weeks: [] });
+    const first = startOfDay(new Date(events[0].t));
+    const now = Date.now();
+    const buckets = new Map();
+    const key = t => Math.floor((t - first) / WEEK);
+    for (const e of events) {
+      const k = key(e.t);
+      let b = buckets.get(k);
+      if (!b) buckets.set(k, b = { k, tokens: 0, cost: 0, requests: 0, blocks: new Set(), hours: new Set() });
+      b.tokens += e.i + e.o + e.r + e.w;
+      b.cost += e.c;
+      b.requests++;
+      b.blocks.add(Math.floor(e.t / BLOCK));
+      b.hours.add(Math.floor(e.t / 36e5));
+    }
+    const lk = lockouts();
+    const weeks = [...buckets.values()].sort((a, b) => a.k - b.k).map(b => {
+      const start = first + b.k * WEEK, end = start + WEEK;
+      const hits = lk.filter(l => l.lastAt >= start && l.lastAt < end);
+      return {
+        start, end, partial: end > now,
+        tokens: b.tokens, cost: b.cost, requests: b.requests,
+        blocksUsed: b.blocks.size, blocksPossible: Math.round(WEEK / BLOCK),
+        activeHours: b.hours.size,
+        lockouts: hits.length, early: hits.filter(l => l.early).length
+      };
+    });
+    return json(res, { weeks });
   }
 
   if (url.pathname === '/api/health') {

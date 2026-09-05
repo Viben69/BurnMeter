@@ -738,14 +738,21 @@ function renderHeroTokens(s) {
   }
 
   if (MODE === 'weekmax') {
-    const cur = wm.current || 0, best = wm.best || 0, pct = wm.pct || 0;
+    const cur = wm.current || 0, best = wm.best || 0;
+    // A goal you set beats a record you happened to hit; fall back to the
+    // record when there is no goal, so the bar always means something.
+    const goal = wm.goal || 0;
+    const target = goal > 0 ? goal : best;
+    const pct = target > 0 ? (cur / target) * 100 : 0;
+    const gap = Math.max(0, target - cur);
+    const vs = goal > 0 ? 'your weekly goal' : 'your biggest week so far';
     $('#worthTitle').textContent = 'Token max';
     $('#worthSpent').textContent = toks(cur);
     $('#worthSub').textContent = 'tokens in the last 7 days';
-    $('#worthMult').textContent = best > 0 ? Math.round(pct) + '%' : DASH;
-    $('#worthSub2').textContent = 'of your biggest week so far';
+    $('#worthMult').textContent = target > 0 ? Math.round(pct) + '%' : DASH;
+    $('#worthSub2').textContent = 'of ' + vs;
     fill.style.width = Math.min(100, pct) + '%';
-    fill.style.background = wm.record ? 'var(--s3)' : pct >= 75 ? 'var(--s4)' : 'var(--s2)';
+    fill.style.background = pct >= 100 ? 'var(--s3)' : pct >= 75 ? 'var(--s4)' : 'var(--s2)';
     $('#worthVerdict').innerHTML = !wm.haveFullWeek
       ? 'Less than a week of history so far, so there is no best week to measure against yet.'
       : wm.record
@@ -758,9 +765,10 @@ function renderHeroTokens(s) {
     const h = wm.hits || { now: 0, best: 0, earlyNow: 0, earlyBest: 0 };
     $('#worthStats').innerHTML = [
       stat('Best week', best > 0 ? toks(best) : DASH, wm.bestEndedAt ? 'ended ' + day(wm.bestEndedAt) : 'no full week yet'),
-      stat('Headroom', toks(wm.headroom || 0), 'to match your record'),
+      stat('Headroom', toks(gap), goal > 0 ? 'to reach your goal' : 'to match your record'),
       stat('Limits hit', `${h.now} vs ${h.best}`, 'this week vs your record week'),
-      stat('Early resets', `${h.earlyNow} vs ${h.earlyBest}`, 'capacity handed back sooner than promised')
+      stat('Early resets', `${h.earlyNow} vs ${h.earlyBest}`,
+           `of ${h.judgedNow} and ${h.judgedBest} that could be judged`)
     ].join('');
     return;
   }
@@ -823,7 +831,8 @@ function drawWeekMax(s) {
   const data = wm.days || [];
   const W = 940, H = 220, L = 62, R = 12, T = 12, B = 26;
   const iw = W - L - R, ih = H - T - B;
-  const pace = wm.best > 0 ? wm.best / 7 : 0;
+  const target = (wm.goal || 0) > 0 ? wm.goal : (wm.best || 0);
+  const pace = target > 0 ? target / 7 : 0;
   const max = Math.max(pace * 1.25, ...data.map(x => x.tokens), 1);
   const now = Date.now();
   const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
@@ -861,7 +870,7 @@ function drawWeekMax(s) {
     svg('line', { x1: L, y1: py, x2: W - R, y2: py, stroke: 'var(--baseline)',
                   'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, el);
     const lab = svg('text', { x: W - R - 4, y: py - 6, 'text-anchor': 'end', class: 'axlab', fill: 'var(--ink-2)' }, el);
-    lab.textContent = `best-week pace ${toks(pace)}/day`;
+    lab.textContent = `${(wm.goal || 0) > 0 ? 'goal' : 'best-week'} pace ${toks(pace)}/day`;
   }
 
   /*
@@ -1262,6 +1271,19 @@ function apply(s) {
   $('#dot').className = 'dot' + (s.scanning ? ' warn' : '');
   $('#livetext').textContent = s.scanning ? 'scanning' : 'live';
   if (document.activeElement !== $('#planName')) $('#planName').value = s.plan.name;
+  if (s.tuning) {
+    const T = s.tuning;
+    const set = (id, v) => { if (document.activeElement !== $(id)) $(id).value = v; };
+    set('#tGoal',  Math.round((T.weekTokenGoal || 0) / 1e6));   // shown in millions
+    set('#tCover', T.blockCoverageGoal || 0);
+    set('#tEarly', T.earlyResetToleranceSec);
+    set('#tGrace', T.resetGraceMinutes);
+    const wm = s.weekMax || {};
+    $('#tNote').textContent = (T.weekTokenGoal > 0
+      ? `Measuring against your goal of ${toks(T.weekTokenGoal)} a week.`
+      : `No goal set, so the bar measures you against your own record of ${toks(wm.best || 0)}.`)
+      + ` A week holds 33.6 five-hour blocks; anything you do not touch expires.`;
+  }
   if (document.activeElement !== $('#planUsd'))  $('#planUsd').value  = s.plan.monthlyUsd;
   if (document.activeElement !== $('#planRenew') && s.period) $('#planRenew').value = s.period.renewalDay;
   if (s.exchange) RATE = s.exchange.rate;
@@ -1290,6 +1312,22 @@ $('#planSave').onclick = async () => {
   });
   const b = $('#planSave'); b.textContent = 'Saved'; setTimeout(() => b.textContent = 'Save', 1400);
 };
+$('#tSave').onclick = async () => {
+  await fetch('/api/config', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      weekTokenGoal: Math.max(0, Number($('#tGoal').value) || 0) * 1e6,
+      blockCoverageGoal: Number($('#tCover').value) || 0,
+      earlyResetToleranceSec: Number($('#tEarly').value) || 0,
+      resetGraceMinutes: Number($('#tGrace').value) || 30
+    })
+  }).catch(() => {});
+  const n = $('#tSaved'); n.textContent = 'saved';
+  setTimeout(() => n.textContent = '', 1600);
+};
+['#tGoal', '#tCover', '#tEarly', '#tGrace'].forEach(id =>
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('#tSave').click(); }));
+
 $('#planUsd').addEventListener('keydown', e => { if (e.key === 'Enter') $('#planSave').click(); });
 $('#planName').addEventListener('keydown', e => { if (e.key === 'Enter') $('#planSave').click(); });
 

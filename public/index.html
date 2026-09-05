@@ -236,6 +236,35 @@
       <button class="icon" id="lMedia" title="Put your own image or GIF in the party">Party image…</button>
     </div>
 
+    <div class="card" id="lTuneCard">
+      <h2>Token-max targets <span class="tag">tune it to how you actually work</span></h2>
+      <div class="row" style="gap:14px;flex-wrap:wrap;align-items:flex-end">
+        <label style="display:flex;flex-direction:column;gap:4px">
+          <span style="color:var(--muted);font-size:12px">Weekly token goal (0 = use my own record)</span>
+          <input class="money" id="tGoal" type="number" min="0" step="100" style="width:150px"
+                 title="Tokens per week to aim for, in millions. 0 measures you against your biggest week instead.">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px">
+          <span style="color:var(--muted);font-size:12px">Blocks to cover, of 34</span>
+          <input class="money" id="tCover" type="number" min="0" max="34" step="1" style="width:110px"
+                 title="How many of the week's 5-hour windows you want to be active in. 0 turns the target off.">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px">
+          <span style="color:var(--muted);font-size:12px">Early if back this many seconds sooner</span>
+          <input class="money" id="tEarly" type="number" min="0" max="3600" step="10" style="width:130px"
+                 title="How far before the promised time a return has to be before it counts as an early reset.">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px">
+          <span style="color:var(--muted);font-size:12px">Still on-time if back within (min)</span>
+          <input class="money" id="tGrace" type="number" min="1" max="720" step="5" style="width:130px"
+                 title="Return later than this and an early reset cannot be told from a normal one, so it is scored unknown.">
+        </label>
+        <button id="tSave" class="icon">Save</button>
+        <span id="tSaved" style="color:var(--muted);font-size:12px"></span>
+      </div>
+      <p class="note" id="tNote" style="margin-top:10px;color:var(--muted);font-size:12px"></p>
+    </div>
+
     <div class="card" id="lStateCard">
       <h2>Right now <span class="tag" id="lStateTag"></span></h2>
       <div id="lState"></div>
