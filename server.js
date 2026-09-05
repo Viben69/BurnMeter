@@ -1397,21 +1397,30 @@ function throwParty(title, body) {
             `&secs=${secs}&sound=${CONFIG.alertSound ? 1 : 0}` +
             (pick ? `&img=${encodeURIComponent(pick)}` : '');
   openWindow('party', { query: q });
+  // Chromium restores the profile's remembered bounds and quietly ignores
+  // --window-size, and a party behind your other windows is not a party.
+  setTimeout(() => {
+    winCmd('party', ['-Action', 'size', '-Width', '900', '-Height', '620']);
+    winCmd('party', ['-Action', 'top']);
+  }, 1400);
   setTimeout(() => winClose('party'), (secs + 3) * 1000);   // belt and braces
 }
 
-/** Close a window by title, for when the page's own window.close() is refused. */
-function winClose(which) {
+/** Drive a window by title through the desktop helper. */
+function winCmd(which, args) {
   if (process.platform !== 'win32') return;
   const script = path.join(DESKTOP_D, 'window.ps1');
   if (!fs.existsSync(script)) return;
   try {
     execFile('powershell.exe',
       ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
-       '-Title', WINDOW_TITLE[which] || 'BurnMeter', '-Exact', '-Action', 'close'],
+       '-Title', WINDOW_TITLE[which] || 'BurnMeter', '-Exact', ...args],
       { timeout: 8000, windowsHide: true }, () => {});
   } catch {}
 }
+
+/** Close a window by title, for when the page's own window.close() is refused. */
+function winClose(which) { winCmd(which, ['-Action', 'close']); }
 
 const clockOf = ms => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 const mins = ms => ms < 60e3 ? 'under a minute'
@@ -1521,7 +1530,8 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
                '.css': 'text/css; charset=utf-8', '.json': 'application/json',
                '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.png': 'image/png',
                '.gif': 'image/gif', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-               '.webp': 'image/webp', '.avif': 'image/avif' };
+               '.webp': 'image/webp', '.avif': 'image/avif',
+               '.mp4': 'video/mp4', '.webm': 'video/webm' };
 
 function json(res, obj, code = 200) {
   res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -1776,14 +1786,38 @@ const server = http.createServer(async (req, res) => {
     const want = decodeURIComponent(url.pathname.slice('/party-media/'.length));
     const hit = partyMedia().find(f => f === want);
     if (!hit) { res.writeHead(404); return res.end('not found'); }
-    return fs.readFile(path.join(PARTY_D, hit), (err, data) => {
-      if (err) { res.writeHead(404); return res.end('not found'); }
-      res.writeHead(200, {
-        'content-type': MIME[path.extname(hit).toLowerCase()] || 'application/octet-stream',
+    const media = path.join(PARTY_D, hit);
+    let st;
+    try { st = fs.statSync(media); } catch { res.writeHead(404); return res.end('not found'); }
+    const ctype = MIME[path.extname(hit).toLowerCase()] || 'application/octet-stream';
+
+    // A <video> will not play from a chunked response with no length: it wants
+    // a byte range and a total size before it will even report a duration.
+    // Images never cared, which is why this went unnoticed until the first mp4.
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+    if (m) {
+      const start = m[1] ? parseInt(m[1], 10) : 0;
+      const end   = m[2] ? parseInt(m[2], 10) : st.size - 1;
+      if (!isFinite(start) || !isFinite(end) || start > end || end >= st.size) {
+        res.writeHead(416, { 'content-range': 'bytes */' + st.size });
+        return res.end();
+      }
+      res.writeHead(206, {
+        'content-type': ctype,
+        'content-length': end - start + 1,
+        'content-range': `bytes ${start}-${end}/${st.size}`,
+        'accept-ranges': 'bytes',
         'cache-control': 'no-store'
       });
-      res.end(data);
+      return fs.createReadStream(media, { start, end }).pipe(res);
+    }
+    res.writeHead(200, {
+      'content-type': ctype,
+      'content-length': st.size,
+      'accept-ranges': 'bytes',
+      'cache-control': 'no-store'
     });
+    return fs.createReadStream(media).pipe(res);
   }
 
   let rel = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -1829,7 +1863,8 @@ function winHelper(extraArgs) {
 
 const WINDOW_TITLE = { mini: 'BurnMeter Gauge', main: 'BurnMeter', party: 'BurnMeter Party' };
 
-const PARTY_EXT = new Set(['.gif', '.png', '.jpg', '.jpeg', '.webp', '.avif', '.svg']);
+const PARTY_EXT = new Set(['.gif', '.png', '.jpg', '.jpeg', '.webp', '.avif', '.svg',
+                           '.mp4', '.webm']);
 
 /** Whatever the user has dropped in party-media, newest first. */
 function partyMedia() {
@@ -1864,7 +1899,7 @@ function openWindow(which, opts = {}) {
   const rect = which === 'mini' ? CONFIG.miniRect : null;
   const size = which === 'mini'
     ? (opts.size || (rect ? `${rect.w},${rect.h}` : miniDefault))
-    : which === 'party' ? (opts.size || '560,520')
+    : which === 'party' ? (opts.size || '860,580')
     : (opts.size || '1380,940');
 
   if (process.platform === 'win32') {

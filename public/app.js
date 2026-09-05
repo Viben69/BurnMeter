@@ -1111,12 +1111,12 @@ let mediaInfo = { dir: '', media: [] };
 $('#lMedia').onclick = () => {
   const n = mediaInfo.media.length;
   alert(
-    'Drop any image or GIF in this folder and the party uses it instead of the '
+    'Drop any image, GIF or video in this folder and the party uses it instead of the '
     + 'drawn figure:\n\n' + mediaInfo.dir + '\n\n'
     + (n ? `${n} file(s) in there now: ${mediaInfo.media.slice(0, 6).join(', ')}`
          + (n > 1 ? '\n\nWith more than one, it picks at random each time.' : '')
        : 'Nothing in there yet, so the drawn figure is being used.')
-    + '\n\nAnimated GIFs work. Nothing in that folder is ever committed or uploaded.'
+    + '\n\nAnimated GIFs and mp4/webm video work. Nothing in that folder is ever uploaded.'
   );
 };
 
